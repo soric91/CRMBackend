@@ -109,6 +109,18 @@ class Variable(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         return medicion.unidad if medicion else None
 
     @property
+    def etiqueta(self) -> str | None:
+        """Cómo se muestra: "Tensión fase C".
+
+        El `nombre` es el identificador que viaja por MQTT y queda en
+        InfluxDB; no está pensado para leerse. Que la etiqueta salga del
+        catálogo y no de una tabla del panel evita que cada proyecto invente
+        su propia traducción de `PhV_phsC`.
+        """
+        medicion = self.medicion
+        return medicion.etiqueta if medicion else None
+
+    @property
     def acumulativa(self) -> bool:
         """Si es un contador monótono. Decide si admite promedios."""
         medicion = self.medicion

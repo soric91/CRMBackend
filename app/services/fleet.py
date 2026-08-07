@@ -137,6 +137,7 @@ def _as_variable(variable: Variable) -> VariableFleet:
         tipo_registro=variable.tipo_registro,
         tipo_dato=variable.tipo_dato,
         escala=variable.escala,
+        etiqueta=variable.etiqueta,
         unidad=variable.unidad,
         magnitud=variable.magnitud,
         fase=variable.fase,

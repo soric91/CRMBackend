@@ -49,6 +49,7 @@ class VariableFleet(BaseModel):
     # Derivadas del nombre vía el catálogo. Con `magnitud` y `fase`, un panel
     # agrupa las tensiones juntas y muestra las fases que existan, en vez de
     # tener campos fijos por fase que dejan afuera a la C.
+    etiqueta: str | None
     unidad: str | None
     magnitud: Magnitud | None
     fase: Fase | None

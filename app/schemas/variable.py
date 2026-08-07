@@ -117,6 +117,7 @@ class VariableRead(BaseModel):
     tipo_dato: ModbusDataType
     escala: Decimal
     # Derivadas del nombre vía el catálogo: no se guardan ni se piden.
+    etiqueta: str | None
     unidad: str | None
     magnitud: Magnitud | None
     fase: Fase | None
