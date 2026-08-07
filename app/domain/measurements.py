@@ -40,6 +40,10 @@ class Magnitud(StrEnum):
     ENERGIA_EXPORTADA = "energia_exportada"
     ENERGIA_REACTIVA_IMPORTADA = "energia_reactiva_importada"
     ENERGIA_REACTIVA_EXPORTADA = "energia_reactiva_exportada"
+    # No es una magnitud eléctrica: es el estado de un relé o una entrada
+    # digital. Va acá porque `tipo_registro` admite `coil` y `discrete`, y
+    # dejarlo afuera haría imposible cargar esas variables.
+    ESTADO_DIGITAL = "estado_digital"
 
 
 class Fase(StrEnum):
@@ -148,6 +152,20 @@ CATALOGO: tuple[Medicion, ...] = (
     *_por_fase("PF", "Factor de potencia", Magnitud.FACTOR_POTENCIA, ""),
     Medicion(
         "TotPF", "Factor de potencia total", Magnitud.FACTOR_POTENCIA, Fase.TOTAL, ""
+    ),
+    # --- Entradas y salidas digitales ---
+    # `GGIO.Ind` en IEC 61850: indicación genérica. Numeradas porque un relé
+    # no tiene un significado universal — qué representa cada una lo sabe
+    # quien cableó el tablero, y va en la descripción del equipo.
+    *(
+        Medicion(
+            nombre=f"Ind{numero:02d}",
+            etiqueta=f"Entrada digital {numero}",
+            magnitud=Magnitud.ESTADO_DIGITAL,
+            fase=Fase.TOTAL,
+            unidad="",
+        )
+        for numero in range(1, 9)
     ),
     # --- Frecuencia ---
     Medicion("Hz", "Frecuencia", Magnitud.FRECUENCIA, Fase.TOTAL, "Hz"),

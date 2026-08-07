@@ -65,11 +65,10 @@ async def _install(
     variable = await client.post(
         f"/api/v1/equipment/{equipment.json()['id']}/variables",
         json={
-            "nombre": "Voltaje A",
+            "nombre": "PhV_phsA",
             "registro_modbus": "2006",
             "notacion_registro": "hex",
             "tipo_dato": "float32",
-            "unidad": "V",
         },
         headers=headers,
     )
@@ -132,7 +131,7 @@ class TestTheWholeTreeInOneRequest:
         assert site["nombre"] == "Planta Empresa Norte"
         assert gateway["numero_serie"] == "GW-NORTE"
         assert equipment["nombre_dispositivo"] == "Medidor_Norte"
-        assert equipment["variables"][0]["nombre"] == "Voltaje A"
+        assert equipment["variables"][0]["nombre"] == "PhV_phsA"
 
     async def test_the_gateway_uuid_travels_with_it(
         self,
@@ -456,7 +455,7 @@ class TestTheETag:
 
         await client.post(
             f"/api/v1/equipment/{installations['norte']['equipment_id']}/variables",
-            json={"nombre": "Corriente A", "registro_modbus": 300},
+            json={"nombre": "A_phsA", "registro_modbus": 300},
             headers=admin_headers,
         )
 

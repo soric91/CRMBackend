@@ -30,6 +30,7 @@ from app.domain.enums import (
     ModbusTransport,
     RegisterNotation,
 )
+from app.domain.measurements import Fase, Magnitud
 
 
 class VariableFleet(BaseModel):
@@ -45,7 +46,13 @@ class VariableFleet(BaseModel):
     tipo_registro: ModbusRegisterType
     tipo_dato: ModbusDataType
     escala: Decimal
+    # Derivadas del nombre vía el catálogo. Con `magnitud` y `fase`, un panel
+    # agrupa las tensiones juntas y muestra las fases que existan, en vez de
+    # tener campos fijos por fase que dejan afuera a la C.
     unidad: str | None
+    magnitud: Magnitud | None
+    fase: Fase | None
+    acumulativa: bool
 
 
 class EquipmentFleet(BaseModel):

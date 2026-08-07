@@ -15,6 +15,7 @@ from app.api.v1 import (
     sites,
     tariffs,
     users,
+    variable_catalog,
     variables,
 )
 
@@ -28,6 +29,7 @@ api_router.include_router(gateways.router)
 api_router.include_router(gateway_config.router)
 api_router.include_router(equipment.router)
 api_router.include_router(variables.router)
+api_router.include_router(variable_catalog.router)
 api_router.include_router(users.router)
 api_router.include_router(tariffs.router)
 api_router.include_router(fleet.router)

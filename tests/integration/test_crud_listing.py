@@ -59,7 +59,7 @@ async def populated(
         )
         equipment_ids.append(equipment.json()["id"])
 
-    for nombre, registro in (("voltaje_l1", 100), ("corriente_l1", 200)):
+    for nombre, registro in (("PhV_phsA", 100), ("A_phsA", 200)):
         await client.post(
             f"/api/v1/equipment/{equipment_ids[0]}/variables",
             json={"nombre": nombre, "registro_modbus": registro},
@@ -219,7 +219,7 @@ class TestDuplicateNames:
     ) -> None:
         response = await client.post(
             f"/api/v1/equipment/{populated['equipment']}/variables",
-            json={"nombre": "voltaje_l1", "registro_modbus": 999},
+            json={"nombre": "PhV_phsA", "registro_modbus": 999},
             headers=admin_headers,
         )
 
@@ -233,7 +233,7 @@ class TestDuplicateNames:
     ) -> None:
         response = await client.post(
             f"/api/v1/equipment/{populated['empty_equipment']}/variables",
-            json={"nombre": "voltaje_l1", "registro_modbus": 100},
+            json={"nombre": "PhV_phsA", "registro_modbus": 100},
             headers=admin_headers,
         )
 

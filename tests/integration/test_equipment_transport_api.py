@@ -395,7 +395,7 @@ class TestPollRateOnTheGateway:
 
         response = await client.post(
             f"/api/v1/equipment/{equipment['id']}/variables",
-            json={"nombre": "voltaje_l1", "registro_modbus": 8198},
+            json={"nombre": "PhV_phsA", "registro_modbus": 8198},
             headers=admin_headers,
         )
 
@@ -410,7 +410,7 @@ class TestRegisterTypeOnVariable:
 
         response = await client.post(
             f"/api/v1/equipment/{equipment['id']}/variables",
-            json={"nombre": "voltaje_l1", "registro_modbus": 2000},
+            json={"nombre": "PhV_phsA", "registro_modbus": 2000},
             headers=admin_headers,
         )
 
@@ -423,8 +423,8 @@ class TestRegisterTypeOnVariable:
         _, equipment = await _create(client, admin_headers, gateway_id, modbus_id=1)
 
         for nombre, registro, tipo in (
-            ("voltaje_l1", 2000, "holding"),
-            ("rele_1", 10, "coil"),
+            ("PhV_phsA", 2000, "holding"),
+            ("Ind01", 10, "coil"),
         ):
             response = await client.post(
                 f"/api/v1/equipment/{equipment['id']}/variables",

@@ -83,12 +83,12 @@ class TestDefaults:
         self, db_session: AsyncSession
     ) -> None:
         _, _, _, equipment = await _full_chain(db_session)
-        db_session.add(make_variable(equipment, nombre="corriente_l1"))
+        db_session.add(make_variable(equipment, nombre="A_phsA"))
         await db_session.flush()
 
         stored = (
             await db_session.execute(
-                select(Variable).where(Variable.nombre == "corriente_l1")
+                select(Variable).where(Variable.nombre == "A_phsA")
             )
         ).scalar_one()
         assert stored.escala == 1
@@ -210,7 +210,7 @@ class TestCheckConstraints:
     ) -> None:
         client, *_ = await _full_chain(db_session)
         db_session.add(
-            make_site(client, nombre="Otra", latitud=latitud, longitud=longitud)
+            make_site(client, nombre="A_phsB", latitud=latitud, longitud=longitud)
         )
 
         with pytest.raises(IntegrityError):
@@ -221,7 +221,9 @@ class TestCheckConstraints:
     ) -> None:
         client, _, _, _ = await _full_chain(db_session)
         db_session.add(
-            make_site(client, nombre="Otra", latitud="4.710989", longitud="-74.072092")
+            make_site(
+                client, nombre="A_phsB", latitud="4.710989", longitud="-74.072092"
+            )
         )
 
         await db_session.flush()  # must not raise
@@ -231,7 +233,7 @@ class TestForeignKeys:
     async def test_a_site_cannot_point_at_a_missing_client(
         self, db_session: AsyncSession
     ) -> None:
-        db_session.add(Site(client_id=uuid.uuid4(), nombre="Huerfana"))
+        db_session.add(Site(client_id=uuid.uuid4(), nombre="A_phsC"))
 
         with pytest.raises(IntegrityError):
             await db_session.flush()

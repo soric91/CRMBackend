@@ -59,7 +59,7 @@ async def installation(
     )
     # Entered exactly as the Chint datasheet prints them: hex digits, hex
     # notation. The backend resolves 2006 to 8198 and writes it back as 0x2006.
-    for nombre, registro in (("VOLTAGE_A", "2006"), ("VOLTAGE_B", "2008")):
+    for nombre, registro in (("PhV_phsA", "2006"), ("PhV_phsB", "2008")):
         await client.post(
             f"/api/v1/equipment/{equipment.json()['id']}/variables",
             json={
@@ -68,7 +68,6 @@ async def installation(
                 "notacion_registro": "hex",
                 "tipo_dato": "float32",
                 "escala": "1",
-                "unidad": "V",
             },
             headers=admin_headers,
         )
@@ -347,7 +346,7 @@ class TestConfiguration:
             headers=gateway_headers,
         )
 
-        entry = response.json()["devices"][0]["map"]["VOLTAGE_A"]
+        entry = response.json()["devices"][0]["map"]["PhV_phsA"]
         assert entry["address"] == "0x2006"
         assert entry["data_type"] == "f"
         assert entry["gain"] == "1"
@@ -363,7 +362,7 @@ class TestConfiguration:
             headers=gateway_headers,
         )
 
-        assert set(response.json()["devices"][0]["map"]) == {"VOLTAGE_A", "VOLTAGE_B"}
+        assert set(response.json()["devices"][0]["map"]) == {"PhV_phsA", "PhV_phsB"}
 
     async def test_a_tcp_device_carries_host_instead_of_a_port(
         self,
@@ -650,7 +649,7 @@ class TestVersioningStopsTheLoop:
         await client.post(
             f"/api/v1/equipment/{installation['equipment_id']}/variables",
             json={
-                "nombre": "CURRENT_A",
+                "nombre": "A_phsA",
                 "registro_modbus": "200A",
                 "notacion_registro": "hex",
             },
@@ -805,7 +804,7 @@ class TestDriftIsVisibleToThePanel:
 
         await client.post(
             f"/api/v1/equipment/{installation['equipment_id']}/variables",
-            json={"nombre": "CURRENT_A", "registro_modbus": 999},
+            json={"nombre": "A_phsA", "registro_modbus": 999},
             headers=admin_headers,
         )
 

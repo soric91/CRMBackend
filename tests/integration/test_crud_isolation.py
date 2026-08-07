@@ -53,7 +53,7 @@ async def _build_tree(
     session.add(equipment)
     await session.flush()
     variable = Variable(
-        equipment_id=equipment.id, nombre="voltaje_l1", registro_modbus=100
+        equipment_id=equipment.id, nombre="PhV_phsA", registro_modbus=100
     )
     session.add(variable)
     await session.flush()
@@ -292,7 +292,7 @@ class TestReadOnlyRole:
     ) -> None:
         response = await client.patch(
             f"/api/v1/sites/{world.own['site']}",
-            json={"nombre": "Otra"},
+            json={"nombre": "A_phsB"},
             headers=readonly_headers,
         )
 

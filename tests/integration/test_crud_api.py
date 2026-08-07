@@ -181,10 +181,9 @@ class TestHierarchyCreation:
         response = await client.post(
             f"/api/v1/equipment/{equipment_id}/variables",
             json={
-                "nombre": "voltaje_l1",
+                "nombre": "PhV_phsA",
                 "registro_modbus": 100,
                 "tipo_dato": "float32",
-                "unidad": "V",
             },
             headers=admin_headers,
         )
@@ -324,7 +323,7 @@ class TestHierarchyCreation:
 
         response = await client.post(
             f"/api/v1/equipment/{equipment_id}/variables",
-            json={"nombre": "v", "registro_modbus": 1, "escala": 0},
+            json={"nombre": "PhV_phsB", "registro_modbus": 1, "escala": 0},
             headers=admin_headers,
         )
 
@@ -348,7 +347,7 @@ class TestCascadeDelete:
         equipment_id = await _create_equipment(client, admin_headers, gateway["id"])
         await client.post(
             f"/api/v1/equipment/{equipment_id}/variables",
-            json={"nombre": "v", "registro_modbus": 1},
+            json={"nombre": "PhV_phsC", "registro_modbus": 1},
             headers=admin_headers,
         )
 

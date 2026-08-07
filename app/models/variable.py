@@ -17,10 +17,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.domain.enums import ModbusDataType, ModbusRegisterType, RegisterNotation
+from app.domain.measurements import Fase, Magnitud, buscar
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.types import enum_column
 
 if TYPE_CHECKING:
+    from app.domain.measurements import Medicion
     from app.models.equipment import Equipment
 
 
@@ -69,11 +71,48 @@ class Variable(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     escala: Mapped[Decimal] = mapped_column(
         Numeric(12, 6), nullable=False, default=Decimal(1)
     )
-    unidad: Mapped[str | None] = mapped_column(String(20))
-
     equipment: Mapped["Equipment"] = relationship(
         back_populates="variables", lazy="raise"
     )
+
+    @property
+    def medicion(self) -> "Medicion | None":
+        """La entrada del catálogo que este nombre representa.
+
+        `None` solo para filas anteriores al catálogo. Una variable creada
+        hoy siempre resuelve: el nombre se valida contra la lista al escribir.
+        """
+        return buscar(self.nombre)
+
+    @property
+    def magnitud(self) -> Magnitud | None:
+        """Qué se está midiendo. Derivado del nombre, nunca guardado.
+
+        Guardarlo sería una segunda verdad que nada mantiene al día — el
+        mismo error que ya corregimos con el `estado` del gateway.
+        """
+        medicion = self.medicion
+        return medicion.magnitud if medicion else None
+
+    @property
+    def fase(self) -> Fase | None:
+        medicion = self.medicion
+        return medicion.fase if medicion else None
+
+    @property
+    def unidad(self) -> str | None:
+        """La unidad física. Se deduce de qué se mide, no se escribe.
+
+        Por eso no existe el caso de `kw` contra `kW`: nadie la teclea.
+        """
+        medicion = self.medicion
+        return medicion.unidad if medicion else None
+
+    @property
+    def acumulativa(self) -> bool:
+        """Si es un contador monótono. Decide si admite promedios."""
+        medicion = self.medicion
+        return medicion.acumulativa if medicion else False
 
     def __repr__(self) -> str:
         return f"<Variable {self.nombre!r} reg={self.registro_modbus}>"

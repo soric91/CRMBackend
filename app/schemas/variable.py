@@ -9,6 +9,21 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.domain.enums import ModbusDataType, ModbusRegisterType, RegisterNotation
 from app.domain.firmware import as_firmware_address, parse_address
+from app.domain.measurements import POR_NOMBRE, Fase, Magnitud
+
+
+def _solo_del_catalogo(value: str) -> str:
+    """Rechaza cualquier nombre que no esté en el catálogo.
+
+    El mensaje nombra el problema y dónde ver las opciones, en vez de un
+    "valor inválido" que obliga a adivinar.
+    """
+    if value not in POR_NOMBRE:
+        raise ValueError(
+            f"'{value}' no es una medición conocida. Las opciones están en "
+            "GET /api/v1/variable-catalog"
+        )
+    return value
 
 
 def _resolve_address(values: Any) -> Any:
@@ -34,16 +49,21 @@ def _resolve_address(values: Any) -> Any:
 
 
 class VariableCreate(BaseModel):
-    nombre: str = Field(min_length=1, max_length=80)
+    # Del catálogo, no texto libre. Antes cada persona escribía el suyo
+    # —`Voltaje A`, `VOLTAGE_A`, `V1`— y el panel quedaba sin datos sin que
+    # nada fallara. Elegir de una lista hace imposible ese error.
+    nombre: str
     # Accepts an integer, or a string read in `notacion_registro`'s base.
     registro_modbus: int = Field(ge=0)
     notacion_registro: RegisterNotation = RegisterNotation.DECIMAL
     tipo_registro: ModbusRegisterType = ModbusRegisterType.HOLDING
     tipo_dato: ModbusDataType = ModbusDataType.UINT16
     escala: Decimal = Decimal(1)
-    unidad: str | None = Field(default=None, max_length=20)
+    # `unidad` no se pide: se deduce de qué se está midiendo.
 
     _parse_address = model_validator(mode="before")(_resolve_address)
+
+    _check_nombre = field_validator("nombre")(_solo_del_catalogo)
 
     @field_validator("escala")
     @classmethod
@@ -61,15 +81,19 @@ class VariableUpdate(BaseModel):
     the base and the number together stays unambiguous.
     """
 
-    nombre: str | None = Field(default=None, min_length=1, max_length=80)
+    nombre: str | None = None
     registro_modbus: int | None = Field(default=None, ge=0)
     notacion_registro: RegisterNotation | None = None
     tipo_registro: ModbusRegisterType | None = None
     tipo_dato: ModbusDataType | None = None
     escala: Decimal | None = None
-    unidad: str | None = Field(default=None, max_length=20)
 
     _parse_address = model_validator(mode="before")(_resolve_address)
+
+    @field_validator("nombre")
+    @classmethod
+    def _check_nombre(cls, value: str | None) -> str | None:
+        return None if value is None else _solo_del_catalogo(value)
 
     @field_validator("escala")
     @classmethod
@@ -92,7 +116,12 @@ class VariableRead(BaseModel):
     tipo_registro: ModbusRegisterType
     tipo_dato: ModbusDataType
     escala: Decimal
+    # Derivadas del nombre vía el catálogo: no se guardan ni se piden.
     unidad: str | None
+    magnitud: Magnitud | None
+    fase: Fase | None
+    # Un contador solo admite difference()/last(); nunca promedios.
+    acumulativa: bool
     created_at: datetime
     updated_at: datetime
 
@@ -104,3 +133,20 @@ class VariableRead(BaseModel):
             as_firmware_address(self.registro_modbus, self.notacion_registro),
         )
         return self
+
+
+class MedicionRead(BaseModel):
+    """Una entrada del catálogo, como la ve el panel."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    # Lo que se guarda como `nombre` de la variable, y lo que el gateway
+    # publica por MQTT.
+    nombre: str
+    # Lo único pensado para leerse: "Tensión fase C".
+    etiqueta: str
+    # Con qué otras agrupar la tarjeta en el panel.
+    magnitud: Magnitud
+    fase: Fase
+    unidad: str
+    acumulativa: bool

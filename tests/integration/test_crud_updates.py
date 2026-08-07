@@ -54,7 +54,7 @@ async def tree(client: AsyncClient, admin_headers: dict[str, str]) -> dict[str, 
 
     variable = await client.post(
         f"/api/v1/equipment/{equipment_id}/variables",
-        json={"nombre": "voltaje_l1", "registro_modbus": 100},
+        json={"nombre": "PhV_phsA", "registro_modbus": 100},
         headers=admin_headers,
     )
     return {
@@ -275,17 +275,47 @@ class TestEquipmentUpdate:
 
 
 class TestVariableUpdate:
-    async def test_scale_and_unit_can_be_changed(
+    async def test_the_scale_can_be_changed(
         self, client: AsyncClient, admin_headers: dict[str, str], tree: dict[str, str]
     ) -> None:
         response = await client.patch(
             f"/api/v1/variables/{tree['variable']}",
-            json={"escala": "0.1", "unidad": "kV"},
+            json={"escala": "0.1"},
             headers=admin_headers,
         )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.json()["unidad"] == "kV"
+        assert response.json()["escala"] == "0.100000"
+
+    async def test_the_unit_cannot_be_set_by_hand(
+        self, client: AsyncClient, admin_headers: dict[str, str], tree: dict[str, str]
+    ) -> None:
+        """Se deduce de qué se mide, y por eso no admite grafías rivales.
+
+        Una unidad tecleada acepta tantas escrituras como personas la
+        escriban — `kw`, `kW`, `KW`— y después nada las compara bien.
+        """
+        response = await client.patch(
+            f"/api/v1/variables/{tree['variable']}",
+            json={"unidad": "kV"},
+            headers=admin_headers,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        # Ignorado, no aplicado: sigue siendo la del catálogo.
+        assert response.json()["unidad"] == "V"
+
+    async def test_the_name_must_come_from_the_catalogue(
+        self, client: AsyncClient, admin_headers: dict[str, str], tree: dict[str, str]
+    ) -> None:
+        """Texto libre es lo que produjo `Voltaje A` contra `VOLTAGE_A`."""
+        response = await client.patch(
+            f"/api/v1/variables/{tree['variable']}",
+            json={"nombre": "Voltaje C"},
+            headers=admin_headers,
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     async def test_a_zero_scale_is_still_rejected_on_update(
         self, client: AsyncClient, admin_headers: dict[str, str], tree: dict[str, str]
@@ -303,13 +333,13 @@ class TestVariableUpdate:
     ) -> None:
         second = await client.post(
             f"/api/v1/equipment/{tree['equipment']}/variables",
-            json={"nombre": "corriente_l1", "registro_modbus": 200},
+            json={"nombre": "A_phsA", "registro_modbus": 200},
             headers=admin_headers,
         )
 
         response = await client.patch(
             f"/api/v1/variables/{second.json()['id']}",
-            json={"nombre": "voltaje_l1"},
+            json={"nombre": "PhV_phsA"},
             headers=admin_headers,
         )
 
@@ -382,7 +412,7 @@ class TestRegisterNotation:
         response = await client.post(
             f"/api/v1/equipment/{tree['equipment']}/variables",
             json={
-                "nombre": "voltaje_a",
+                "nombre": "PhV_phsB",
                 "registro_modbus": "2006",
                 "notacion_registro": "hex",
             },
@@ -399,7 +429,7 @@ class TestRegisterNotation:
         response = await client.post(
             f"/api/v1/equipment/{tree['equipment']}/variables",
             json={
-                "nombre": "voltaje_b",
+                "nombre": "PhV_phsC",
                 "registro_modbus": "0x2008",
                 "notacion_registro": "hex",
             },
@@ -413,7 +443,7 @@ class TestRegisterNotation:
     ) -> None:
         response = await client.post(
             f"/api/v1/equipment/{tree['equipment']}/variables",
-            json={"nombre": "corriente_a", "registro_modbus": 2000},
+            json={"nombre": "A_phsA", "registro_modbus": 2000},
             headers=admin_headers,
         )
 
@@ -428,7 +458,7 @@ class TestRegisterNotation:
         as_hex = await client.post(
             f"/api/v1/equipment/{tree['equipment']}/variables",
             json={
-                "nombre": "en_hex",
+                "nombre": "A_phsB",
                 "registro_modbus": "2000",
                 "notacion_registro": "hex",
             },
@@ -436,7 +466,7 @@ class TestRegisterNotation:
         )
         as_decimal = await client.post(
             f"/api/v1/equipment/{tree['equipment']}/variables",
-            json={"nombre": "en_decimal", "registro_modbus": "2000"},
+            json={"nombre": "A_phsC", "registro_modbus": "2000"},
             headers=admin_headers,
         )
 
@@ -449,7 +479,7 @@ class TestRegisterNotation:
         response = await client.post(
             f"/api/v1/equipment/{tree['equipment']}/variables",
             json={
-                "nombre": "contradictorio",
+                "nombre": "TotW",
                 "registro_modbus": "0x2006",
                 "notacion_registro": "decimal",
             },
@@ -464,7 +494,7 @@ class TestRegisterNotation:
         """How a row loaded in the wrong base gets fixed from the panel."""
         created = await client.post(
             f"/api/v1/equipment/{tree['equipment']}/variables",
-            json={"nombre": "mal_cargada", "registro_modbus": 2000},
+            json={"nombre": "TotPF", "registro_modbus": 2000},
             headers=admin_headers,
         )
 

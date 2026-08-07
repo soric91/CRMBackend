@@ -95,10 +95,9 @@ def make_variable(equipment: Equipment, **overrides: Any) -> Variable:
     return Variable(
         **{
             "equipment_id": equipment.id,
-            "nombre": "voltaje_l1",
+            "nombre": "PhV_phsA",
             "registro_modbus": 100,
             "tipo_dato": ModbusDataType.FLOAT32,
-            "unidad": "V",
             **overrides,
         }
     )

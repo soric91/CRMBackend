@@ -120,7 +120,7 @@ class TestRepresentations:
             (Site(nombre="Planta Norte"), "Planta Norte"),
             (Gateway(numero_serie="GW-1"), "GW-1"),
             (Equipment(tipo=EquipmentType.MEDIDOR, modbus_id=3), "id=3"),
-            (Variable(nombre="voltaje_l1", registro_modbus=100), "voltaje_l1"),
+            (Variable(nombre="PhV_phsA", registro_modbus=100), "PhV_phsA"),
             (
                 Tariff(mes=date(2026, 6, 1), valor_importado=Decimal("780")),
                 "junio 2026",
