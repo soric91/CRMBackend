@@ -16,6 +16,7 @@ from app.api.deps import FleetServiceDep, MachineOrUserScopeDep, PaginationDep
 from app.domain.fleet import FleetLevel
 from app.schemas.common import Page
 from app.schemas.fleet import ClientFleet
+from app.schemas.fleet_summary import ClientSummary
 from app.services.fleet import compute_fleet_version
 
 router = APIRouter(prefix="/fleet", tags=["fleet"])
@@ -65,3 +66,30 @@ async def get_fleet(
 
     response.headers["ETag"] = etag
     return page
+
+
+@router.get("/summary", response_model=Page[ClientSummary])
+async def get_fleet_summary(
+    scope: MachineOrUserScopeDep,
+    service: FleetServiceDep,
+    pagination: PaginationDep,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+) -> Page[ClientSummary]:
+    """Cuánto tiene instalado cada cliente, sin el inventario.
+
+    Para pintar una lista de clientes con "3 gateways, 2 en línea" sin traer
+    el árbol de cada uno. Los conteos se hacen en la base; la alternativa era
+    pedir `/fleet?nivel=variables` y contar del lado del que pregunta, lo que
+    transfiere cada registro Modbus de cada equipo para mostrar un número.
+
+    Mismo recorte por cliente que el árbol: un `cliente` se ve solo a sí mismo.
+    """
+    items, total = await service.summarise_clients(
+        scope,
+        limit=pagination.limit,
+        offset=pagination.offset,
+        search=search,
+    )
+    return Page[ClientSummary](
+        items=items, total=total, limit=pagination.limit, offset=pagination.offset
+    )

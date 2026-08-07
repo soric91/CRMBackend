@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import ColumnElement, Row, Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.interfaces import LoaderOption
@@ -369,3 +369,96 @@ class FleetRepository:
         )
         counter = select(func.count()).select_from(Client).where(*conditions)
         return await self._page(statement, counter, limit=limit, offset=offset)
+
+    async def summarise_clients(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        only_client_id: uuid.UUID | None = None,
+        search: str | None = None,
+        offline_before: datetime,
+    ) -> tuple[list[Row[Any]], int]:
+        """Cuánto tiene instalado cada cliente, contado en la base.
+
+        Cada conteo va como subconsulta escalar y no como `JOIN` + `COUNT`
+        agrupado. Con joins encadenados las filas se multiplican entre sí —un
+        cliente con 2 sedes y 3 gateways devuelve 6 filas— y los conteos salen
+        todos mal, cada uno inflado por el tamaño de los otros niveles. Es un
+        error que no rompe nada visiblemente: los números quedan plausibles.
+        """
+        sedes = (
+            select(func.count())
+            .select_from(Site)
+            .where(Site.client_id == Client.id)
+            .scalar_subquery()
+        )
+        gateways_de = (
+            select(Gateway.id)
+            .join(Site, Gateway.site_id == Site.id)
+            .where(Site.client_id == Client.id)
+        )
+        gateways = (
+            select(func.count()).select_from(gateways_de.subquery()).scalar_subquery()
+        )
+        en_linea = (
+            select(func.count())
+            .select_from(
+                gateways_de.where(Gateway.ultima_conexion >= offline_before).subquery()
+            )
+            .scalar_subquery()
+        )
+        equipos_de = (
+            select(Equipment.id)
+            .join(Gateway, Equipment.gateway_id == Gateway.id)
+            .join(Site, Gateway.site_id == Site.id)
+            .where(Site.client_id == Client.id)
+        )
+        equipos = (
+            select(func.count()).select_from(equipos_de.subquery()).scalar_subquery()
+        )
+        variables = (
+            select(func.count())
+            .select_from(Variable)
+            .where(Variable.equipment_id.in_(equipos_de))
+            .scalar_subquery()
+        )
+        ultima = (
+            select(func.max(Gateway.ultima_conexion))
+            .select_from(Gateway)
+            .join(Site, Gateway.site_id == Site.id)
+            .where(Site.client_id == Client.id)
+            .scalar_subquery()
+        )
+
+        conditions: list[ColumnElement[bool]] = []
+        if only_client_id is not None:
+            conditions.append(Client.id == only_client_id)
+        if search:
+            conditions.append(Client.nombre_empresa.ilike(self._like(search)))
+
+        base = select(Client.id).where(*conditions)
+        total = await self._session.scalar(
+            select(func.count()).select_from(base.subquery())
+        )
+
+        stmt = (
+            select(
+                Client.id,
+                Client.nombre_empresa,
+                Client.estado,
+                Client.puede_ver_consumo,
+                sedes.label("sedes"),
+                gateways.label("gateways"),
+                en_linea.label("gateways_en_linea"),
+                equipos.label("equipos"),
+                variables.label("variables"),
+                ultima.label("ultima_conexion"),
+            )
+            .where(*conditions)
+            .order_by(Client.nombre_empresa)
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.all()), total or 0

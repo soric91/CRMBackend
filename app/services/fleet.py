@@ -10,6 +10,9 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import Row
 
 from app.core.exceptions import AuthorizationError
 from app.domain.access import AccessScope
@@ -26,6 +29,7 @@ from app.schemas.fleet import (
     SiteFleet,
     VariableFleet,
 )
+from app.schemas.fleet_summary import ClientSummary
 
 
 class FleetService:
@@ -123,6 +127,34 @@ class FleetService:
             search=search,
         )
         return [_as_client(client, level) for client in clients], total
+
+    async def summarise_clients(
+        self,
+        scope: AccessScope,
+        *,
+        limit: int,
+        offset: int,
+        search: str | None = None,
+    ) -> tuple[list[ClientSummary], int]:
+        """Qué tiene instalado cada cliente, en conteos.
+
+        Mismo permiso y mismo recorte que el árbol: un `cliente` que llegue acá
+        se ve a sí mismo y a nadie más. Que sean conteos y no filas no lo hace
+        menos sensible — saber cuántos gateways tiene otra empresa ya es
+        información de otra empresa.
+        """
+        if not scope.can_read_fleet:
+            raise AuthorizationError(f"Role '{scope.principal}' cannot read the fleet")
+        rows, total = await self._fleet.summarise_clients(
+            limit=limit,
+            offset=offset,
+            only_client_id=scope.visible_client_id,
+            search=search,
+            # El corte se calcula al preguntar y no se guarda, así que la
+            # respuesta es verdadera ahora y no cuando alguien editó una fila.
+            offline_before=datetime.now(UTC) - OFFLINE_AFTER,
+        )
+        return [_as_summary(row) for row in rows], total
 
 
 def _as_variable(variable: Variable) -> VariableFleet:
@@ -225,3 +257,18 @@ def compute_fleet_version(page: Page[ClientFleet]) -> str:
         page.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _as_summary(row: Row[Any]) -> ClientSummary:
+    return ClientSummary(
+        id=row.id,
+        nombre_empresa=row.nombre_empresa,
+        estado=row.estado,
+        puede_ver_consumo=row.puede_ver_consumo,
+        sedes=row.sedes,
+        gateways=row.gateways,
+        gateways_en_linea=row.gateways_en_linea,
+        equipos=row.equipos,
+        variables=row.variables,
+        ultima_conexion=row.ultima_conexion,
+    )
