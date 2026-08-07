@@ -791,3 +791,89 @@ class TestLeavingImpersonation:
         )
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+class TestChangingPasswordWhileImpersonating:
+    """El endpoint de contraseña con un token prestado.
+
+    Hoy es seguro por construcción: `sub` sigue siendo el administrador, así
+    que cambia la suya. Nada de eso está escrito en ninguna parte, y es
+    exactamente el tipo de cosa que se rompe al "mejorar" el endpoint para que
+    use el `client_id` del token. Estos tests lo dejan fijado.
+    """
+
+    NUEVA = "otra-clave-larga-1"
+
+    async def _cambiar(
+        self, client: AsyncClient, token: str, actual: str
+    ) -> dict[str, object]:
+        response = await client.post(
+            "/api/v1/auth-monitor/password",
+            json={"current_password": actual, "new_password": self.NUEVA},
+            headers=auth_header(token),
+        )
+        body: dict[str, object] = response.json()
+        body["_status"] = response.status_code
+        return body
+
+    async def test_it_changes_the_admins_own_password_not_the_clients(
+        self,
+        client: AsyncClient,
+        admin_user: User,
+        a_client: Client,
+        granted: dict[str, object],
+    ) -> None:
+        """Lo que no debe pasar: que suplantar sea una forma de tomar la
+        cuenta del cliente. Si cambiara la del cliente, el administrador se
+        quedaría con una contraseña que el dueño no eligió ni conoce."""
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+        prestado = await _impersonate(client, str(entrada["access_token"]), a_client.id)
+
+        cambio = await self._cambiar(
+            client, str(prestado["access_token"]), TEST_PASSWORD
+        )
+
+        assert cambio["_status"] == status.HTTP_200_OK
+        # La del cliente sigue siendo la suya: entra igual que antes.
+        del_cliente = await _monitor_login(
+            client, "operador@empresa.com", str(granted["temporary_password"])
+        )
+        assert del_cliente["_status"] == status.HTTP_200_OK
+
+    async def test_the_clients_password_is_not_accepted_as_the_current_one(
+        self,
+        client: AsyncClient,
+        admin_user: User,
+        a_client: Client,
+        granted: dict[str, object],
+    ) -> None:
+        """La prueba directa de sobre qué cuenta opera: la del administrador."""
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+        prestado = await _impersonate(client, str(entrada["access_token"]), a_client.id)
+
+        cambio = await self._cambiar(
+            client,
+            str(prestado["access_token"]),
+            str(granted["temporary_password"]),
+        )
+
+        assert cambio["_status"] == status.HTTP_401_UNAUTHORIZED
+
+    async def test_the_returned_pair_is_no_longer_impersonating(
+        self, client: AsyncClient, admin_user: User, a_client: Client
+    ) -> None:
+        """Cambiar la contraseña propia devuelve tokens propios.
+
+        Es el lado seguro: si el par nuevo siguiera prestado sin decirlo, el
+        aviso de la pantalla se apagaría mientras el acceso sigue abierto.
+        """
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+        prestado = await _impersonate(client, str(entrada["access_token"]), a_client.id)
+
+        cambio = await self._cambiar(
+            client, str(prestado["access_token"]), TEST_PASSWORD
+        )
+
+        assert cambio["client_id"] is None
+        yo = await _monitor_me(client, str(cambio["access_token"]))
+        assert yo["impersonated"] is False
