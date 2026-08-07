@@ -124,6 +124,18 @@ class MonitorAuthService:
         )
         return self._pair_for(admin, on_behalf_of=client.id)
 
+    def stop_impersonating(self, admin: User) -> MonitorTokenPair:
+        """Volver a ser uno mismo: un par sin ninguna empresa.
+
+        Hace falta un endpoint propio porque refrescar no sirve: el refresh
+        conserva la empresa elegida a propósito, para que un vencimiento no
+        eche al administrador de lo que está mirando. Salir es una decisión,
+        no un vencimiento, y tiene que poder pedirse.
+        """
+        if admin.role is not UserRole.ADMIN:
+            raise AuthorizationError("Solo un administrador puede hacer esto")
+        return self._pair_for(admin)
+
     async def login(self, email: str, password: str) -> MonitorTokenPair:
         """Verify credentials and return the tokens plus the client to show.
 

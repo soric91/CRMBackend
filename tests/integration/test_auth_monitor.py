@@ -743,3 +743,51 @@ class TestImpersonationSurvivesRefresh:
 
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["client_id"] is None
+
+
+class TestLeavingImpersonation:
+    async def test_an_admin_can_go_back_to_having_no_company(
+        self, client: AsyncClient, admin_user: User, a_client: Client
+    ) -> None:
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+        elegido = await _impersonate(client, str(entrada["access_token"]), a_client.id)
+
+        response = await client.delete(
+            "/api/v1/auth-monitor/impersonate",
+            headers=auth_header(str(elegido["access_token"])),
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["client_id"] is None
+
+    async def test_the_returned_token_no_longer_reads_that_company(
+        self, client: AsyncClient, admin_user: User, a_client: Client
+    ) -> None:
+        """Salir tiene que ser real: si el token nuevo siguiera marcado como
+        suplantación, el aviso desaparecería de la pantalla mientras el acceso
+        sigue abierto — la peor de las dos combinaciones."""
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+        elegido = await _impersonate(client, str(entrada["access_token"]), a_client.id)
+        salida = await client.delete(
+            "/api/v1/auth-monitor/impersonate",
+            headers=auth_header(str(elegido["access_token"])),
+        )
+
+        yo = await _monitor_me(client, salida.json()["access_token"])
+
+        assert yo["client_id"] is None
+        assert yo["impersonated"] is False
+
+    async def test_a_client_cannot_ask_for_it(
+        self, client: AsyncClient, granted: dict[str, object]
+    ) -> None:
+        entrada = await _monitor_login(
+            client, "operador@empresa.com", str(granted["temporary_password"])
+        )
+
+        response = await client.delete(
+            "/api/v1/auth-monitor/impersonate",
+            headers=auth_header(str(entrada["access_token"])),
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN

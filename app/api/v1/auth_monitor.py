@@ -94,6 +94,18 @@ async def impersonate(
     return await auth.impersonate(session.user, client_id)
 
 
+@router.delete("/impersonate", response_model=MonitorTokenPair)
+async def stop_impersonating(
+    session: CurrentMonitorSessionDep, auth: MonitorAuthServiceDep
+) -> MonitorTokenPair:
+    """Volver a la lista de proyectos, sin ninguna empresa.
+
+    No alcanza con refrescar: el refresh conserva la empresa a propósito, para
+    que un token vencido no eche al administrador de lo que está mirando.
+    """
+    return auth.stop_impersonating(session.user)
+
+
 @router.post("/password", response_model=MonitorTokenPair)
 async def change_password(
     payload: PasswordChange,
