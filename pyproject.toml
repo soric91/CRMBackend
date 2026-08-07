@@ -1,0 +1,92 @@
+[project]
+name = "crmbackend"
+version = "0.1.0"
+description = "Device Management Platform (CRM) backend for EMS gateways"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.18.5",
+    "asyncpg>=0.31.0",
+    "bcrypt>=5.0.0",
+    "fastapi>=0.141.1",
+    "pydantic[email]>=2",
+    "pydantic-settings>=2.14.2",
+    # [crypto] trae `cryptography`: RS256 firma con clave privada, y sin ese
+    # extra PyJWT solo sabe HMAC.
+    "pyjwt[crypto]>=2.13.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "uvicorn[standard]>=0.52.1",
+    "aiomqtt>=2.5.1",
+]
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.22.1",
+    "httpx>=0.28.1",
+    "pyright>=1.1.411",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.1",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "N",        # pep8-naming
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "C4",       # comprehensions
+    "SIM",      # simplify
+    "RUF",      # ruff-specific
+    "ASYNC",    # async correctness
+    "S",        # bandit (security)
+    "T20",      # no print statements
+    "ARG",      # unused arguments
+    "PTH",      # prefer pathlib
+]
+ignore = ["S101"]  # assert is expected in tests
+
+[tool.ruff.lint.per-file-ignores]
+# ARG001/ARG002: a fixture is often requested only for its side effect
+# (a row it inserts), so the parameter is legitimately unused in the body.
+"tests/*" = ["ARG001", "ARG002", "S105", "S106"]
+"app/scripts/*" = ["T20"]  # bootstrap scripts talk to the terminal
+# Migrations are generated: long DDL lines are expected, and the revision
+# identifiers must keep the names Alembic gave them. S608 flags the backfill
+# statements, which interpolate module constants, never request data.
+"alembic/versions/*" = ["E501", "N999", "S608"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pyright]
+pythonVersion = "3.13"
+include = ["app", "tests"]
+exclude = ["alembic/versions", ".venv"]
+typeCheckingMode = "standard"
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q --strict-markers --cov=app --cov-report=term-missing"
+markers = [
+    "integration: requires a real database connection",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/main.py", "alembic/*"]
+# SQLAlchemy's async layer resumes coroutines inside a greenlet. Without this,
+# coverage stops tracing after the first await on the session and reports code
+# that demonstrably runs as uncovered.
+concurrency = ["greenlet", "thread"]

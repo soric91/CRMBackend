@@ -1,0 +1,29 @@
+# Secrets — must never reach an image layer.
+.env
+.env.*
+!.env.example
+
+# Version control and local tooling
+.git
+.gitignore
+.github
+.claude
+
+# Virtualenvs and caches
+.venv
+__pycache__/
+*.py[oc]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Not needed at runtime
+tests/
+README.md
+Dockerfile
+.dockerignore
+docker-compose.yml

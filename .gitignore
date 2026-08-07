@@ -1,0 +1,35 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment / secrets — never commit these
+.env
+.env.*
+!.env.example
+
+# Local Docker overrides — machine-specific, never deployed
+docker-compose.override.yml
+
+# Working documents: integration guides and hand-offs between repos. They are
+# written for a person to read once, not maintained as part of the codebase.
+*PROMPT*.md
+GATEWAY_INTEGRATION.html
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Signing keys. The private half must never be committed.
+secrets/
+*.pem

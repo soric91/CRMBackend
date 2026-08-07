@@ -1,0 +1,42 @@
+# The database is Supabase, not a container: there is no postgres service here
+# on purpose. Everything the API needs comes from `.env`, which is read at
+# runtime and never baked into the image.
+services:
+  api:
+    build:
+      context: .
+      target: runtime
+    image: crmbackend:local
+    env_file: .env
+    environment:
+      # Compose only fills these in when they are absent from .env.
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Las claves de firma. Solo lectura, y fuera de la imagen: una clave
+      # privada horneada en una capa de Docker viaja a donde vaya la imagen.
+      #
+      # OJO: creá `secrets/` ANTES del primer `docker compose up`. Si no
+      # existe, Docker lo crea con el usuario del demonio (root) y después
+      # openssl no puede escribir ahí:
+      #   mkdir -p secrets && chmod 700 secrets
+      # Si ya te pasó: sudo chown -R "$USER":"$USER" secrets
+      - ./secrets:/app/secrets:ro
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request as r; r.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4)
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp

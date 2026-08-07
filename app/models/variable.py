@@ -1,0 +1,79 @@
+"""Variable: a single magnitude read from a piece of equipment."""
+
+import uuid
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+from app.domain.enums import ModbusDataType, ModbusRegisterType, RegisterNotation
+from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.types import enum_column
+
+if TYPE_CHECKING:
+    from app.models.equipment import Equipment
+
+
+class Variable(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One reading exposed by an equipment, e.g. ``voltaje_l1``."""
+
+    __tablename__ = "variables"
+    __table_args__ = (
+        UniqueConstraint(
+            "equipment_id", "nombre", name="uq_variables_equipment_id_nombre"
+        ),
+        CheckConstraint("registro_modbus >= 0", name="registro_modbus_non_negative"),
+        CheckConstraint("escala <> 0", name="escala_not_zero"),
+    )
+
+    equipment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("equipment.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nombre: Mapped[str] = mapped_column(String(80), nullable=False)
+    # Always the numeric address, whatever base it was read in.
+    registro_modbus: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Which base the operator read it in. Decides how it is written back to
+    # the firmware, whose map files use `0x2006` for a hex address.
+    notacion_registro: Mapped[RegisterNotation] = mapped_column(
+        enum_column(RegisterNotation, "register_notation"),
+        nullable=False,
+        default=RegisterNotation.DECIMAL,
+        server_default=text("'decimal'"),
+    )
+    # The address space this register lives in. Per variable, not per
+    # equipment: one analyser commonly exposes its electrical measurements as
+    # holding or input registers and its relay states as coils.
+    tipo_registro: Mapped[ModbusRegisterType] = mapped_column(
+        enum_column(ModbusRegisterType, "modbus_register_type"),
+        nullable=False,
+        default=ModbusRegisterType.HOLDING,
+        server_default=text("'holding'"),
+    )
+    tipo_dato: Mapped[ModbusDataType] = mapped_column(
+        enum_column(ModbusDataType, "modbus_data_type"),
+        nullable=False,
+        default=ModbusDataType.UINT16,
+    )
+    # Multiplier applied to the raw register value. Numeric, not float: a 0.1
+    # scale on a float column silently drifts on repeated readings.
+    escala: Mapped[Decimal] = mapped_column(
+        Numeric(12, 6), nullable=False, default=Decimal(1)
+    )
+    unidad: Mapped[str | None] = mapped_column(String(20))
+
+    equipment: Mapped["Equipment"] = relationship(
+        back_populates="variables", lazy="raise"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Variable {self.nombre!r} reg={self.registro_modbus}>"
