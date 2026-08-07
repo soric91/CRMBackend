@@ -29,7 +29,7 @@ from app.schemas.fleet import (
     SiteFleet,
     VariableFleet,
 )
-from app.schemas.fleet_summary import ClientSummary
+from app.schemas.fleet_summary import ClientSummary, GatewayCaido
 
 
 class FleetService:
@@ -155,6 +155,27 @@ class FleetService:
             offline_before=datetime.now(UTC) - OFFLINE_AFTER,
         )
         return [_as_summary(row) for row in rows], total
+
+    async def list_offline_gateways(
+        self, scope: AccessScope, *, limit: int, offset: int
+    ) -> tuple[list[GatewayCaido], int]:
+        """Qué dejó de reportar, en toda la flota.
+
+        Es la pregunta con la que se abre el panel un día malo, y hasta ahora
+        había que entrar proyecto por proyecto para contestarla.
+        """
+        if not scope.can_read_fleet:
+            raise AuthorizationError(f"Role '{scope.principal}' cannot read the fleet")
+        rows, total = await self._fleet.list_offline_gateways(
+            limit=limit,
+            offset=offset,
+            only_client_id=scope.visible_client_id,
+            seen_since=datetime.now(UTC) - OFFLINE_AFTER,
+        )
+        caidos = [
+            GatewayCaido.model_validate(row, from_attributes=True) for row in rows
+        ]
+        return caidos, total
 
 
 def _as_variable(variable: Variable) -> VariableFleet:

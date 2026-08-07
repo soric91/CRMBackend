@@ -7,8 +7,8 @@ registro Modbus— para dibujar "3 gateways". Funciona con tres clientes y deja
 de funcionar bastante antes de lo que uno cree.
 """
 
-import uuid
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -18,7 +18,7 @@ from app.domain.enums import ClientStatus
 class ClientSummary(BaseModel):
     """Un cliente y sus conteos."""
 
-    id: uuid.UUID
+    id: UUID
     nombre_empresa: str
     estado: ClientStatus
     puede_ver_consumo: bool
@@ -37,3 +37,28 @@ class ClientSummary(BaseModel):
     # reportó nunca. Es la señal más barata de "dejó de llegar información":
     # vive en el CRM y no obliga a consultar la base de series temporales.
     ultima_conexion: datetime | None
+
+
+class GatewayCaido(BaseModel):
+    """Un gateway que dejó de reportar, y dónde está.
+
+    Lleva los nombres de la sede y de la empresa porque la pregunta que
+    contesta esta vista es "a quién llamo". Con solo el número de serie hay
+    que resolver a mano de quién es cada uno, que es el trabajo que la vista
+    existe para evitar.
+    """
+
+    id: UUID
+    numero_serie: str
+    # Ojo: este campo se llama igual que el módulo `uuid`. Por eso el tipo se
+    # importa como `UUID` y no se anota `uuid.UUID` — a partir de esta línea
+    # `uuid` es el campo, y cualquier anotación posterior fallaría.
+    uuid: UUID
+    # `None` si nunca se conectó. No es lo mismo que "hace mucho": la
+    # instalación puede no haber arrancado todavía.
+    ultima_conexion: datetime | None
+
+    site_id: UUID
+    sitio: str
+    client_id: UUID
+    empresa: str

@@ -266,15 +266,11 @@ class FleetRepository:
         if search:
             conditions.append(Gateway.numero_serie.ilike(self._like(search)))
         if online is not None and seen_since is not None:
-            if online:
-                conditions.append(Gateway.ultima_conexion >= seen_since)
-            else:
-                conditions.append(
-                    or_(
-                        Gateway.ultima_conexion.is_(None),
-                        Gateway.ultima_conexion < seen_since,
-                    )
-                )
+            conditions.append(
+                Gateway.ultima_conexion >= seen_since
+                if online
+                else _sin_conexion(seen_since)
+            )
 
         statement = select(Gateway).where(*conditions).order_by(Gateway.numero_serie)
         counter = select(func.count()).select_from(Gateway).where(*conditions)
@@ -370,6 +366,62 @@ class FleetRepository:
         counter = select(func.count()).select_from(Client).where(*conditions)
         return await self._page(statement, counter, limit=limit, offset=offset)
 
+    async def list_offline_gateways(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        seen_since: datetime,
+        only_client_id: uuid.UUID | None = None,
+    ) -> tuple[list[Row[Any]], int]:
+        """Los gateways que dejaron de reportar, con dónde están.
+
+        Devuelve los nombres de la sede y de la empresa, y no solo los ids,
+        porque la pregunta que contesta es "a quién llamo". Una lista de
+        números de serie obliga a resolver cada `site_id` a mano, que es
+        exactamente el trabajo que esta vista existe para evitar.
+
+        Los más viejos primero: un gateway callado hace una semana es un
+        problema distinto de uno que se cayó recién.
+        """
+        conditions: list[ColumnElement[bool]] = [_sin_conexion(seen_since)]
+        if only_client_id is not None:
+            conditions.append(Site.client_id == only_client_id)
+
+        desde = (
+            select(Gateway)
+            .join(Site, Gateway.site_id == Site.id)
+            .join(Client, Site.client_id == Client.id)
+            .where(*conditions)
+        )
+        total = await self._session.scalar(
+            select(func.count()).select_from(desde.subquery())
+        )
+
+        stmt = (
+            select(
+                Gateway.id,
+                Gateway.numero_serie,
+                Gateway.uuid,
+                Gateway.ultima_conexion,
+                Site.id.label("site_id"),
+                Site.nombre.label("sitio"),
+                Client.id.label("client_id"),
+                Client.nombre_empresa.label("empresa"),
+            )
+            .join(Site, Gateway.site_id == Site.id)
+            .join(Client, Site.client_id == Client.id)
+            .where(*conditions)
+            # Nulls primero: el que nunca se conectó es el caso más viejo que
+            # existe, y con un ORDER BY corriente quedaría al final o al
+            # principio según el motor.
+            .order_by(Gateway.ultima_conexion.asc().nulls_first())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.all()), total or 0
+
     async def summarise_clients(
         self,
         *,
@@ -462,3 +514,16 @@ class FleetRepository:
         )
         result = await self._session.execute(stmt)
         return list(result.all()), total or 0
+
+
+def _sin_conexion(seen_since: datetime) -> ColumnElement[bool]:
+    """Un gateway que no reportó desde el corte, o que nunca reportó.
+
+    Una sola definición para los dos usos: el filtro `estado=offline` del
+    listado y la vista de caídos. Con dos copias, un cambio en una dejaba a la
+    otra contando distinto sobre los mismos datos.
+    """
+    return or_(
+        Gateway.ultima_conexion.is_(None),
+        Gateway.ultima_conexion < seen_since,
+    )

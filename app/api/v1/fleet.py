@@ -16,7 +16,7 @@ from app.api.deps import FleetServiceDep, MachineOrUserScopeDep, PaginationDep
 from app.domain.fleet import FleetLevel
 from app.schemas.common import Page
 from app.schemas.fleet import ClientFleet
-from app.schemas.fleet_summary import ClientSummary
+from app.schemas.fleet_summary import ClientSummary, GatewayCaido
 from app.services.fleet import compute_fleet_version
 
 router = APIRouter(prefix="/fleet", tags=["fleet"])
@@ -91,5 +91,27 @@ async def get_fleet_summary(
         search=search,
     )
     return Page[ClientSummary](
+        items=items, total=total, limit=pagination.limit, offset=pagination.offset
+    )
+
+
+@router.get("/gateways-offline", response_model=Page[GatewayCaido])
+async def get_offline_gateways(
+    scope: MachineOrUserScopeDep,
+    service: FleetServiceDep,
+    pagination: PaginationDep,
+) -> Page[GatewayCaido]:
+    """Los gateways que dejaron de reportar, en toda la flota.
+
+    Navegando por padre —cliente, sede, gateway— contestar esto cuesta una
+    petición por nodo, así que en la práctica no se contesta. Acá sale en una,
+    con el nombre de la empresa y de la sede para saber a quién llamar.
+
+    Los más viejos primero, y los que nunca se conectaron antes que todos.
+    """
+    items, total = await service.list_offline_gateways(
+        scope, limit=pagination.limit, offset=pagination.offset
+    )
+    return Page[GatewayCaido](
         items=items, total=total, limit=pagination.limit, offset=pagination.offset
     )

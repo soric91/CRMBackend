@@ -215,3 +215,61 @@ class TestItIsScopedLikeTheTree:
 
     async def test_without_a_token_it_is_rejected(self, client: AsyncClient) -> None:
         assert (await client.get(SUMMARY)).status_code == status.HTTP_401_UNAUTHORIZED
+
+
+OFFLINE = "/api/v1/fleet/gateways-offline"
+
+
+class TestWhatStoppedReporting:
+    """La vista de gateways caídos de toda la flota.
+
+    Navegando por padre —cliente, sede, gateway— contestar esto cuesta una
+    petición por nodo, así que en la práctica no se contesta nunca.
+    """
+
+    async def test_a_gateway_that_never_reported_is_listed(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+        desigual: dict[str, Any],
+    ) -> None:
+        """Nunca conectado cuenta como caído: para ir a arreglarlo, "nunca
+        reportó" y "dejó de reportar" son el mismo trabajo."""
+        response = await client.get(OFFLINE, headers=admin_headers)
+
+        assert response.status_code == status.HTTP_200_OK, response.text
+        assert response.json()["total"] == 3
+
+    async def test_it_says_who_to_call(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+        desigual: dict[str, Any],
+    ) -> None:
+        """Una lista de números de serie obliga a resolver cada site_id a
+        mano — el trabajo que esta vista existe para evitar."""
+        response = await client.get(OFFLINE, headers=admin_headers)
+
+        fila = response.json()["items"][0]
+        assert fila["empresa"] == "Empresa Desigual"
+        assert fila["sitio"] in ("Planta A", "Planta B")
+        assert fila["numero_serie"].startswith("GW-")
+
+    async def test_a_client_only_sees_its_own(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+        desigual: dict[str, Any],
+        cliente_user: User,
+        authenticate_monitor: Login,
+    ) -> None:
+        """`desigual` tiene tres gateways caídos y son de otra empresa."""
+        token = await authenticate_monitor(cliente_user.email)
+
+        response = await client.get(OFFLINE, headers=auth_header(token))
+
+        assert response.status_code == status.HTTP_200_OK, response.text
+        assert response.json()["items"] == []
+
+    async def test_without_a_token_it_is_rejected(self, client: AsyncClient) -> None:
+        assert (await client.get(OFFLINE)).status_code == status.HTTP_401_UNAUTHORIZED
