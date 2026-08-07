@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from app.core.config import Settings
 from app.core.exceptions import AuthenticationError
@@ -22,6 +23,22 @@ from app.repositories.user import UserRepository
 from app.schemas.auth import TokenPair
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class ResolvedToken:
+    """Todo lo que un access token afirma, ya verificado."""
+
+    user: User
+    scope: TokenScope
+    # La empresa cuyos datos abre este token. Normalmente la del propio
+    # usuario, pero en una suplantación es la que el administrador eligió —
+    # por eso sale del claim y no de `user.client_id`.
+    client_id: uuid.UUID | None
+    # El token lo pidió un administrador para mirar los datos de otro. Existe
+    # para que quien decida algo distinto por eso —saltarse un permiso, negar
+    # una escritura— pueda distinguirlo, y para que quede en los registros.
+    impersonated: bool
 
 
 class AuthService:
@@ -75,21 +92,33 @@ class AuthService:
         logger.info("login succeeded", extra={"user_id": str(user.id)})
         return user
 
-    def issue_tokens(self, user: User) -> TokenPair:
+    def issue_tokens(
+        self, user: User, *, on_behalf_of: uuid.UUID | None = None
+    ) -> TokenPair:
         """Return a fresh access/refresh pair for ``user``.
 
         The scope is read from the account every time, never carried over from
         an older token, so a pending password change survives a refresh.
+
+        ``on_behalf_of`` mints the token for another company's data while the
+        subject stays the caller. It is the whole of impersonation: the token
+        still names one company, so every reader keeps confining itself to one
+        without knowing that anything special happened. Deciding *who* may ask
+        for it is not this method's job — see
+        :meth:`MonitorAuthService.impersonate`.
         """
         subject = str(user.id)
         scope = (
             TokenScope.PASSWORD_CHANGE if user.must_change_password else TokenScope.FULL
         )
-        claims = {
+        client_id = on_behalf_of or user.client_id
+        claims: dict[str, object] = {
             "role": user.role.value,
-            "client_id": str(user.client_id) if user.client_id else None,
+            "client_id": str(client_id) if client_id else None,
             "scope": scope.value,
         }
+        if on_behalf_of is not None:
+            claims["impersonated"] = True
         return TokenPair(
             access_token=create_access_token(
                 self._settings,
@@ -98,7 +127,15 @@ class AuthService:
                 claims=claims,
             ),
             refresh_token=create_refresh_token(
-                self._settings, subject=subject, audience=self._audience
+                self._settings,
+                subject=subject,
+                audience=self._audience,
+                # Solo la empresa elegida. El rol y el alcance siguen saliendo
+                # de la base al canjearlo, así que degradar a un administrador
+                # le corta la suplantación en el siguiente refresh.
+                claims={"client_id": str(on_behalf_of), "impersonated": True}
+                if on_behalf_of is not None
+                else None,
             ),
             expires_in=self._settings.access_token_expire_minutes * 60,
         )
@@ -129,18 +166,36 @@ class AuthService:
         """
         return self.issue_tokens(await self.user_from_refresh_token(refresh_token))
 
-    async def user_from_refresh_token(self, refresh_token: str) -> User:
-        """Return the account a refresh token stands for, re-read from the base."""
+    async def resolve_refresh(self, refresh_token: str) -> ResolvedToken:
+        """Verify a refresh token and return the account plus what it delegates.
+
+        El alcance se recalcula desde la cuenta y no se lee del token: un
+        cambio de contraseña pendiente tiene que sobrevivir al refresh.
+        """
         payload = decode_token(
             self._settings,
             refresh_token,
             expected_type=TokenType.REFRESH,
             expected_audience=self._accepted,
         )
-        return await self._load_active_user(payload["sub"])
+        user = await self._load_active_user(payload["sub"])
+        scope = (
+            TokenScope.PASSWORD_CHANGE if user.must_change_password else TokenScope.FULL
+        )
+        return ResolvedToken(
+            user=user,
+            scope=scope,
+            client_id=_as_uuid(payload.get("client_id")),
+            impersonated=payload.get("impersonated") is True,
+        )
 
-    async def resolve_access_token(self, token: str) -> tuple[User, TokenScope]:
-        """Return the user an access token stands for, and what it may reach."""
+    async def user_from_refresh_token(self, refresh_token: str) -> User:
+        """Return the account a refresh token stands for, re-read from the base."""
+        resolved = await self.resolve_refresh(refresh_token)
+        return resolved.user
+
+    async def resolve_access(self, token: str) -> ResolvedToken:
+        """Verify an access token and return everything it claims."""
         payload = decode_token(
             self._settings,
             token,
@@ -152,7 +207,21 @@ class AuthService:
             scope = TokenScope(payload.get("scope", TokenScope.FULL.value))
         except ValueError as exc:
             raise AuthenticationError("Invalid token") from exc
-        return user, scope
+        return ResolvedToken(
+            user=user,
+            scope=scope,
+            client_id=_as_uuid(payload.get("client_id")),
+            impersonated=payload.get("impersonated") is True,
+        )
+
+    async def resolve_access_token(self, token: str) -> tuple[User, TokenScope]:
+        """Return the user an access token stands for, and what it may reach.
+
+        Lo que necesita casi todo el mundo. :meth:`resolve_access` da lo mismo
+        más los claims que solo importan en la suplantación.
+        """
+        resolved = await self.resolve_access(token)
+        return resolved.user, resolved.scope
 
     async def _load_active_user(self, subject: str) -> User:
         try:
@@ -164,3 +233,18 @@ class AuthService:
         if user is None or not user.is_active:
             raise AuthenticationError("Invalid token")
         return user
+
+
+def _as_uuid(value: object) -> uuid.UUID | None:
+    """El claim como UUID, o `None` si no lo es.
+
+    Un claim malformado se trata como ausente y no como un error: el token ya
+    pasó la verificación de firma, así que lo emitió el propio CRM, y quedarse
+    sin empresa hace que el llamador no vea nada — que es el lado seguro.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None

@@ -161,6 +161,7 @@ def create_refresh_token(
     *,
     subject: str,
     audience: TokenAudience = TokenAudience.CRM,
+    claims: dict[str, Any] | None = None,
 ) -> str:
     """Return a long-lived token whose only power is minting access tokens.
 
@@ -168,9 +169,16 @@ def create_refresh_token(
     database when it is exchanged, so a demotion — or a still-pending password
     change — takes effect without waiting for the refresh token to expire.
     Refreshing can therefore never be a way out of the mandatory change.
+
+    ``claims`` es la excepción a esa regla, y existe para una sola cosa: la
+    empresa que un administrador eligió mirar. Esa no es un dato de la cuenta
+    que se pueda releer —es una elección— así que si no viaja acá, refrescar
+    devuelve al administrador a la pantalla de proyectos cada vez. El permiso
+    para usarla se sigue verificando contra la base al canjear el token.
     """
     return create_token(
         settings,
+        claims=claims,
         subject=subject,
         token_type=TokenType.REFRESH,
         expires_in=timedelta(days=settings.refresh_token_expire_days),

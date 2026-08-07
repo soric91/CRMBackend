@@ -32,34 +32,97 @@ logger = get_logger(__name__)
 class MonitorAuthService:
     """Logs a client in to the monitoring web."""
 
-    def __init__(self, auth: AuthService, users: UserRepository) -> None:
+    def __init__(
+        self, auth: AuthService, users: UserRepository, clients: ClientRepository
+    ) -> None:
         self._auth = auth
         self._users = users
+        self._clients = clients
+
+    # Quién puede usar la web de monitoreo, y con qué alcance.
+    #
+    # Un `cliente` entra a su propia empresa. Un `admin` entra sin ninguna, y
+    # elige después cuál mirar: es la misma persona que da de alta las
+    # empresas en el CRM, así que negarle ver lo que configuró solo obligaría
+    # a pedirle la contraseña al cliente.
+    #
+    # Cualquier otro rol —`tecnico`— sigue afuera. La lista dice quién pasa y
+    # no quién no, así que un rol que se agregue mañana queda negado por
+    # defecto en vez de colarse.
+    _ROLES_ADMITIDOS = frozenset({UserRole.CLIENTE, UserRole.ADMIN})
 
     @staticmethod
-    def _require_client_role(user: User) -> None:
-        """Refuse anyone who is not a client, without saying so.
+    def _require_monitor_role(user: User) -> None:
+        """Refuse anyone the monitoring web is not for, without saying so.
 
-        An administrator gets the same generic failure as a wrong password:
-        confirming that the account exists but belongs elsewhere hands an
-        attacker a map of the internal staff.
+        El rechazo es el mismo texto que una contraseña equivocada: confirmar
+        que la cuenta existe pero es de otro lado le da a un atacante un mapa
+        del personal interno.
         """
-        if user.role is not UserRole.CLIENTE:
+        if user.role not in MonitorAuthService._ROLES_ADMITIDOS:
             logger.info(
                 "monitor login refused",
-                extra={"reason": "not_a_client", "user_id": str(user.id)},
+                extra={"reason": "role_not_allowed", "user_id": str(user.id)},
             )
             raise AuthenticationError("Incorrect email or password")
 
-    def _pair_for(self, user: User) -> MonitorTokenPair:
-        pair = self._auth.issue_tokens(user)
-        if user.client_id is None:  # pragma: no cover - the database forbids it
+    def _pair_for(
+        self, user: User, *, on_behalf_of: uuid.UUID | None = None
+    ) -> MonitorTokenPair:
+        """El par de tokens, y a qué empresa apunta.
+
+        Un `cliente` siempre lleva la suya; el esquema la exige y la base la
+        garantiza. Un administrador lleva la que eligió, o ninguna mientras no
+        haya elegido.
+        """
+        pair = self._auth.issue_tokens(user, on_behalf_of=on_behalf_of)
+        client_id = on_behalf_of or user.client_id
+        if client_id is None and user.role is not UserRole.ADMIN:
+            # pragma: no cover - the database forbids it
             raise AuthenticationError("Incorrect email or password")
         return MonitorTokenPair(
             **pair.model_dump(),
-            client_id=user.client_id,
+            client_id=client_id,
+            role=user.role,
             must_change_password=user.must_change_password,
         )
+
+    async def impersonate(self, admin: User, client_id: uuid.UUID) -> MonitorTokenPair:
+        """Emitir un token que abre los datos de `client_id`.
+
+        El token nombra una sola empresa, igual que el de un cliente, así que
+        todo lo que lee datos —acá y en ApiEMS— sigue confinado a una sin
+        enterarse de que hubo una suplantación. Esa es la razón de emitir un
+        token nuevo en vez de aceptar un `client_id` por parámetro en cada
+        petición: con un parámetro, el aislamiento pasa a depender de que cada
+        endpoint futuro se acuerde de validarlo.
+
+        `puede_ver_consumo` no se mira acá a propósito. Es la marca que un
+        administrador le pone o le saca al cliente, y su sentido es que el
+        cliente no vea el consumo — no que dejen de verlo quienes lo
+        administran. Que se pueda entrar a una empresa con el consumo apagado
+        es justamente para poder revisarla antes de habilitarla.
+        """
+        if admin.role is not UserRole.ADMIN:
+            raise AuthorizationError("Solo un administrador puede ver otras empresas")
+
+        client = await self._clients.get(client_id)
+        if client is None:
+            raise NotFoundError("Cliente no encontrado")
+
+        # Suplantar es sensible y silencioso por naturaleza: sin este registro
+        # no queda forma de saber quién miró qué empresa.
+        logger.warning(
+            "monitor impersonation",
+            extra={
+                "admin_id": str(admin.id),
+                "admin_email": admin.email,
+                "client_id": str(client.id),
+                "client_name": client.nombre_empresa,
+                "puede_ver_consumo": client.puede_ver_consumo,
+            },
+        )
+        return self._pair_for(admin, on_behalf_of=client.id)
 
     async def login(self, email: str, password: str) -> MonitorTokenPair:
         """Verify credentials and return the tokens plus the client to show.
@@ -69,7 +132,7 @@ class MonitorAuthService:
         unknown, and treats a disabled account as a bad credential.
         """
         user = await self._auth.authenticate(email, password)
-        self._require_client_role(user)
+        self._require_monitor_role(user)
         return self._pair_for(user)
 
     async def refresh(self, refresh_token: str) -> MonitorTokenPair:
@@ -78,9 +141,18 @@ class MonitorAuthService:
         The scope is recomputed from the stored flag, so refreshing is not a
         way around the mandatory password change.
         """
-        user = await self._auth.user_from_refresh_token(refresh_token)
-        self._require_client_role(user)
-        return self._pair_for(user)
+        resolved = await self._auth.resolve_refresh(refresh_token)
+        self._require_monitor_role(resolved.user)
+        # La empresa elegida sobrevive al refresh, el permiso para mirarla no:
+        # se vuelve a exigir el rol contra la base. A un administrador
+        # degradado el siguiente refresh le corta la suplantación en vez de
+        # dejarla viva hasta que expire el token.
+        on_behalf_of = (
+            resolved.client_id
+            if resolved.impersonated and resolved.user.role is UserRole.ADMIN
+            else None
+        )
+        return self._pair_for(resolved.user, on_behalf_of=on_behalf_of)
 
     async def change_own_password(
         self, user: User, current_password: str, new_password: str

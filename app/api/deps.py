@@ -30,7 +30,7 @@ from app.repositories.service_account import ServiceAccountRepository
 from app.repositories.tariff import TariffRepository
 from app.repositories.user import UserRepository
 from app.schemas.common import Pagination
-from app.services.auth import AuthService
+from app.services.auth import AuthService, ResolvedToken
 from app.services.auth_monitor import MonitorAccessService, MonitorAuthService
 from app.services.fleet import FleetService
 from app.services.gateway_config import (
@@ -150,11 +150,13 @@ CurrentCrmUserDep = Annotated[User, Depends(get_current_crm_user)]
 
 
 def get_monitor_auth_service(
-    users: UserRepositoryDep, settings: SettingsDep
+    users: UserRepositoryDep, settings: SettingsDep, session: SessionDep
 ) -> MonitorAuthService:
     """The monitoring web's auth, minting tokens for its own audience."""
     return MonitorAuthService(
-        AuthService(users, settings, audience=TokenAudience.MONITOR), users
+        AuthService(users, settings, audience=TokenAudience.MONITOR),
+        users,
+        ClientRepository(session),
     )
 
 
@@ -175,6 +177,38 @@ async def get_current_monitor_user(
 
 
 CurrentMonitorUserDep = Annotated[User, Depends(get_current_monitor_user)]
+
+
+async def get_current_monitor_session(
+    request: Request,
+    users: UserRepositoryDep,
+    settings: SettingsDep,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(_bearer)
+    ] = None,
+) -> ResolvedToken:
+    """El usuario detrás del token y la empresa que ese token abre.
+
+    Distinto de :func:`get_current_monitor_user`, que solo devuelve la cuenta:
+    en una suplantación la empresa no sale de la cuenta —un administrador no
+    pertenece a ninguna— sino del token, y hay endpoints que necesitan saber
+    cuál es y que hubo suplantación.
+    """
+    if credentials is None or not credentials.credentials:
+        raise AuthenticationError("Missing bearer token")
+    auth = AuthService(users, settings, audience=TokenAudience.MONITOR)
+    resolved = await auth.resolve_access(credentials.credentials)
+    if (
+        resolved.scope is TokenScope.PASSWORD_CHANGE
+        and request.url.path not in ALLOWED_WHILE_RESTRICTED
+    ):
+        raise PasswordChangeRequiredError
+    return resolved
+
+
+CurrentMonitorSessionDep = Annotated[
+    ResolvedToken, Depends(get_current_monitor_session)
+]
 
 
 def get_monitor_access_service(session: SessionDep) -> MonitorAccessService:

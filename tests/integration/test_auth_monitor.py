@@ -329,15 +329,26 @@ class TestMonitorLogin:
 
         assert body["_status"] == status.HTTP_401_UNAUTHORIZED
 
-    async def test_an_admin_cannot_get_in(
+    async def test_an_admin_gets_in_without_a_company(
         self, client: AsyncClient, admin_user: User
     ) -> None:
-        """Same generic failure as a bad password, so staff stays invisible."""
-        wrong = await _monitor_login(client, admin_user.email, "clave-incorrecta")
-        staff = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+        """Entra, pero sin empresa: primero elige a cuál mirar.
 
-        assert staff["_status"] == status.HTTP_401_UNAUTHORIZED
-        assert staff["error"] == wrong["error"]
+        Es la misma persona que da de alta las empresas en el CRM; negarle la
+        entrada solo obligaba a pedirle la contraseña al cliente.
+        """
+        body = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+
+        assert body["_status"] == status.HTTP_200_OK
+        assert body["client_id"] is None
+        assert body["role"] == "admin"
+
+    async def test_an_admin_with_a_wrong_password_is_still_rejected(
+        self, client: AsyncClient, admin_user: User
+    ) -> None:
+        body = await _monitor_login(client, admin_user.email, "clave-incorrecta")
+
+        assert body["_status"] == status.HTTP_401_UNAUTHORIZED
 
     async def test_a_tecnico_cannot_get_in(
         self, client: AsyncClient, tecnico_user: User
@@ -588,3 +599,147 @@ class TestPermissionsOnGranting:
         )
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def _impersonate(
+    client: AsyncClient, token: str, client_id: uuid.UUID
+) -> dict[str, object]:
+    response = await client.post(
+        f"/api/v1/auth-monitor/impersonate/{client_id}", headers=auth_header(token)
+    )
+    body: dict[str, object] = response.json()
+    body["_status"] = response.status_code
+    return body
+
+
+async def _monitor_me(client: AsyncClient, token: str) -> dict[str, object]:
+    response = await client.get("/api/v1/auth-monitor/me", headers=auth_header(token))
+    body: dict[str, object] = response.json()
+    body["_status"] = response.status_code
+    return body
+
+
+class TestImpersonation:
+    """Un administrador mirando los datos de una empresa.
+
+    Lo que se prueba es sobre todo el límite: que el token resultante nombre
+    una sola empresa —igual que el de un cliente— y que nadie más pueda
+    pedirlo.
+    """
+
+    async def test_an_admin_can_switch_into_a_company(
+        self, client: AsyncClient, admin_user: User, a_client: Client
+    ) -> None:
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+
+        elegido = await _impersonate(
+            client, str(entrada["access_token"]), a_client.id
+        )
+
+        assert elegido["_status"] == status.HTTP_200_OK
+        assert elegido["client_id"] == str(a_client.id)
+
+    async def test_the_token_names_that_company_and_says_it_is_borrowed(
+        self, client: AsyncClient, admin_user: User, a_client: Client
+    ) -> None:
+        """El panel necesita las dos cosas: a quién mira, y que no es suyo."""
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+        elegido = await _impersonate(
+            client, str(entrada["access_token"]), a_client.id
+        )
+
+        yo = await _monitor_me(client, str(elegido["access_token"]))
+
+        assert yo["client_id"] == str(a_client.id)
+        assert yo["impersonated"] is True
+        assert yo["user_id"] == str(admin_user.id)  # sigue siendo el administrador
+
+    async def test_a_company_with_consumption_disabled_can_still_be_entered(
+        self, client: AsyncClient, admin_user: User, a_client: Client,
+        db_session: AsyncSession,
+    ) -> None:
+        """El caso que motivó todo: `puede_ver_consumo` decide lo que ve el
+        cliente, no lo que ve quien lo administra. Si no, no se podría revisar
+        una empresa antes de habilitarla."""
+        a_client.puede_ver_consumo = False
+        await db_session.flush()
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+
+        elegido = await _impersonate(
+            client, str(entrada["access_token"]), a_client.id
+        )
+
+        assert elegido["_status"] == status.HTTP_200_OK
+
+    async def test_an_unknown_company_is_a_404(
+        self, client: AsyncClient, admin_user: User
+    ) -> None:
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+
+        elegido = await _impersonate(
+            client, str(entrada["access_token"]), uuid.uuid4()
+        )
+
+        assert elegido["_status"] == status.HTTP_404_NOT_FOUND
+
+    async def test_a_client_cannot_impersonate_anyone(
+        self,
+        client: AsyncClient,
+        a_client: Client,
+        granted: dict[str, object],
+        db_session: AsyncSession,
+    ) -> None:
+        """El límite que importa: si un cliente pudiera pedir esto, la
+        suplantación sería una puerta abierta entre empresas."""
+        otra = Client(nombre_empresa="Otra SA", contacto_email="otra@empresa.com")
+        db_session.add(otra)
+        await db_session.flush()
+        entrada = await _monitor_login(
+            client, "operador@empresa.com", str(granted["temporary_password"])
+        )
+
+        elegido = await _impersonate(client, str(entrada["access_token"]), otra.id)
+
+        assert elegido["_status"] == status.HTTP_403_FORBIDDEN
+
+    async def test_without_a_token_it_is_rejected(
+        self, client: AsyncClient, a_client: Client
+    ) -> None:
+        response = await client.post(
+            f"/api/v1/auth-monitor/impersonate/{a_client.id}"
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+class TestImpersonationSurvivesRefresh:
+    async def test_refreshing_keeps_the_chosen_company(
+        self, client: AsyncClient, admin_user: User, a_client: Client
+    ) -> None:
+        """Sin esto el administrador vuelve a la lista de proyectos cada vez
+        que el token de acceso vence — que en producción es todo el tiempo."""
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+        elegido = await _impersonate(
+            client, str(entrada["access_token"]), a_client.id
+        )
+
+        response = await client.post(
+            "/api/v1/auth-monitor/refresh",
+            json={"refresh_token": elegido["refresh_token"]},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["client_id"] == str(a_client.id)
+
+    async def test_an_admin_who_never_chose_refreshes_without_a_company(
+        self, client: AsyncClient, admin_user: User
+    ) -> None:
+        entrada = await _monitor_login(client, admin_user.email, TEST_PASSWORD)
+
+        response = await client.post(
+            "/api/v1/auth-monitor/refresh",
+            json={"refresh_token": entrada["refresh_token"]},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["client_id"] is None
