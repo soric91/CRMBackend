@@ -30,6 +30,18 @@ GATEWAY_INTEGRATION.html
 htmlcov/
 coverage.xml
 
+# Índices derivados del código: se regeneran, y versionarlos genera conflictos
+# en cada rama sin aportar nada que el código no diga ya.
+.tokensave/
+graphify-out/
+
+# Permisos de Claude Code en esta máquina. Son de quien usa la terminal, no
+# del proyecto.
+.claude/settings.local.json
+
+# Capturas pegadas al chat (Claude Code las guarda en el cwd del proyecto)
+Imagen pegada*.png
+
 # Signing keys. The private half must never be committed.
 secrets/
 *.pem
