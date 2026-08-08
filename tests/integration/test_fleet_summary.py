@@ -160,6 +160,29 @@ class TestTheCountsAreNotMultipliedByEachOther:
         assert fila["equipos"] == 4
         assert fila["variables"] == 5
 
+    async def test_an_empty_client_counts_zero_next_to_a_populated_one(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+        desigual: dict[str, Any],
+    ) -> None:
+        """El caso que separa un conteo correlacionado de uno que no lo está.
+
+        Con una sola empresa en la base, contar "los gateways de este cliente"
+        y contar "todos los gateways" dan el mismo número, así que un conteo
+        sin correlacionar pasa desapercibido. Hace falta una empresa vacía al
+        lado de una poblada para que la diferencia se note.
+        """
+        await _crear_cliente(client, admin_headers, "Empresa Vacia")
+
+        fila = await _resumen(client, admin_headers, "Empresa Vacia")
+
+        assert fila["sedes"] == 0
+        assert fila["gateways"] == 0
+        assert fila["gateways_en_linea"] == 0
+        assert fila["equipos"] == 0
+        assert fila["variables"] == 0
+
     async def test_an_empty_client_counts_zero_and_still_appears(
         self, client: AsyncClient, admin_headers: dict[str, str]
     ) -> None:

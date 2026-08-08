@@ -439,48 +439,54 @@ class FleetRepository:
         todos mal, cada uno inflado por el tamaño de los otros niveles. Es un
         error que no rompe nada visiblemente: los números quedan plausibles.
         """
-        sedes = (
-            select(func.count())
-            .select_from(Site)
-            .where(Site.client_id == Client.id)
-            .scalar_subquery()
+        # Cada conteo es una subconsulta escalar correlacionada con `Client`
+        # de la consulta externa. Es importante que ninguna se envuelva en
+        # `.subquery()`: una tabla derivada en el FROM no puede referirse a
+        # las columnas de la consulta que la contiene, así que la correlación
+        # se pierde y el conteo pasa a ser el de TODOS los clientes. No falla
+        # ni avisa —devuelve números plausibles— y además filtra información
+        # de una empresa a otra.
+        def _cuantos(desde: Select[Any]) -> Any:
+            return desde.correlate(Client).scalar_subquery()
+
+        sedes = _cuantos(
+            select(func.count()).select_from(Site).where(Site.client_id == Client.id)
         )
-        gateways_de = (
-            select(Gateway.id)
+        gateways = _cuantos(
+            select(func.count())
+            .select_from(Gateway)
             .join(Site, Gateway.site_id == Site.id)
             .where(Site.client_id == Client.id)
         )
-        gateways = (
-            select(func.count()).select_from(gateways_de.subquery()).scalar_subquery()
-        )
-        en_linea = (
+        en_linea = _cuantos(
             select(func.count())
-            .select_from(
-                gateways_de.where(Gateway.ultima_conexion >= offline_before).subquery()
+            .select_from(Gateway)
+            .join(Site, Gateway.site_id == Site.id)
+            .where(
+                Site.client_id == Client.id,
+                Gateway.ultima_conexion >= offline_before,
             )
-            .scalar_subquery()
         )
-        equipos_de = (
-            select(Equipment.id)
+        equipos = _cuantos(
+            select(func.count())
+            .select_from(Equipment)
             .join(Gateway, Equipment.gateway_id == Gateway.id)
             .join(Site, Gateway.site_id == Site.id)
             .where(Site.client_id == Client.id)
         )
-        equipos = (
-            select(func.count()).select_from(equipos_de.subquery()).scalar_subquery()
-        )
-        variables = (
+        variables = _cuantos(
             select(func.count())
             .select_from(Variable)
-            .where(Variable.equipment_id.in_(equipos_de))
-            .scalar_subquery()
+            .join(Equipment, Variable.equipment_id == Equipment.id)
+            .join(Gateway, Equipment.gateway_id == Gateway.id)
+            .join(Site, Gateway.site_id == Site.id)
+            .where(Site.client_id == Client.id)
         )
-        ultima = (
+        ultima = _cuantos(
             select(func.max(Gateway.ultima_conexion))
             .select_from(Gateway)
             .join(Site, Gateway.site_id == Site.id)
             .where(Site.client_id == Client.id)
-            .scalar_subquery()
         )
 
         conditions: list[ColumnElement[bool]] = []
