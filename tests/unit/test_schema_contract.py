@@ -13,8 +13,10 @@ from app.models import __all__ as exported_models
 EXPECTED_TABLES = {
     "alerts_config",
     "clients",
+    "enrollment_tokens",
     "equipment",
     "gateways",
+    "platform_settings",
     "service_accounts",
     "sites",
     "tariffs",

@@ -105,6 +105,16 @@ class Settings(BaseSettings):
     # them — the same trap that already bit us with the database password.
     jwt_private_key_path: str | None = None
     jwt_public_key_path: str | None = None
+    # Cifra los valores de configuración de plataforma que hay que poder leer
+    # de vuelta —la contraseña de MQTT, el token de InfluxDB del servidor—.
+    # Vive en el entorno y no en la base a propósito: así un volcado de la
+    # base, solo, no alcanza para leerlos. Sin esta clave la API se niega a
+    # guardar un valor secreto en vez de guardarlo en claro.
+    #
+    # Generar una con:
+    #   uv run python -c "from app.core.secret_box import generate_key; \
+    #                     print(generate_key())"
+    settings_encryption_key: SecretStr | None = None
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     # The firmware renews this itself with its credential, so a short life

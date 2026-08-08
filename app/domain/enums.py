@@ -133,3 +133,24 @@ class NotificationChannel(StrEnum):
     EMAIL = "email"
     TELEGRAM = "telegram"
     WHATSAPP = "whatsapp"
+
+
+class SettingOrigin(StrEnum):
+    """De dónde sale el valor de una variable del `.env` de un gateway.
+
+    Existe para que el nombre de la variable pueda viajar aunque el valor no
+    salga de acá. Un equipo que pide su configuración tiene que recibir el
+    archivo completo, incluidas las líneas que él mismo llena — si no, hay que
+    mantener en el firmware una segunda lista de qué más hace falta.
+    """
+
+    # El valor vive en esta tabla y se edita desde el panel.
+    PLATAFORMA = "plataforma"
+    # Lo genera el propio equipo al instalarse, al azar, y no sale de ahí:
+    # el token y la contraseña de su InfluxDB local. Guardarlos acá sería
+    # traerlos a la red sin que nadie más los necesite.
+    EQUIPO = "equipo"
+    # Sale de la ficha del gateway —su uuid, su credencial— que ya está en la
+    # tabla `gateways`. Repetirlo acá sería un segundo lugar afirmando lo
+    # mismo, y el día que discrepen no habría forma de saber cuál manda.
+    IDENTIDAD = "identidad"
