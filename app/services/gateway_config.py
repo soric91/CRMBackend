@@ -83,7 +83,21 @@ class GatewayCredentialService:
         """
         self._require_write(scope)
         gateway = await self._gateway(scope, gateway_id)
+        return await self.rotate(gateway)
 
+    async def rotate(self, gateway: Gateway) -> tuple[Gateway, str]:
+        """Reemplazar la credencial de un gateway ya autorizado.
+
+        Sin `AccessScope`: quien llama ya verificó su propio permiso. Lo usa
+        :meth:`issue` después de comprobarlo, y el enrolamiento después de
+        validar el token de un solo uso — que no es un usuario y no tiene
+        alcance que verificar.
+
+        La mecánica vive acá una sola vez a propósito. Duplicarla dejaría dos
+        formas de emitir una credencial, y el día que una cambie —otro
+        algoritmo de hash, un campo más que registrar— la otra queda vieja sin
+        que nada avise.
+        """
         credential = generate_gateway_credential()
         updated = await self._gateways.update(
             gateway,
@@ -92,7 +106,7 @@ class GatewayCredentialService:
                 "credential_emitida_en": datetime.now(UTC),
             },
         )
-        logger.info("gateway credential issued", extra={"gateway_id": str(gateway_id)})
+        logger.info("gateway credential issued", extra={"gateway_id": str(gateway.id)})
         return updated, credential
 
     async def revoke(self, scope: AccessScope, gateway_id: uuid.UUID) -> None:

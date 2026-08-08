@@ -8,6 +8,7 @@ last release is from 2020 and it crashes against bcrypt 4.1+ while reading a
 private attribute that no longer exists.
 """
 
+import hashlib
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -95,6 +96,22 @@ def verify_password(password: str, password_hash: str) -> bool:
 # path spend the same time on an unknown email as on a known one, so response
 # timing does not reveal which addresses exist.
 _DUMMY_HASH = hash_password(uuid.uuid4().hex)
+
+
+def hash_lookup_token(token: str) -> str:
+    """Return the sha256 of a token, for storing and looking it up.
+
+    Distinto de :func:`hash_password`, y a propósito. Bcrypt existe para hacer
+    lento el ataque por diccionario contra un secreto que una persona eligió;
+    esto son 32 bytes al azar, donde un diccionario no sirve.
+
+    Y bcrypt no se puede indexar: cada verificación es contra un hash
+    conocido. Acá la petición llega con el token y hay que **encontrar** su
+    fila, así que el hash tiene que ser determinista y buscable. Es el mismo
+    razonamiento por el que `ServiceAccount.credencial_id` es público e
+    indexado y solo su secreto va con bcrypt.
+    """
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def waste_time_like_a_real_verification() -> None:

@@ -3,9 +3,11 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.api.deps import (
+    EnrollmentServiceDep,
     EquipmentServiceDep,
     FleetServiceDep,
     GatewayConfigServiceDep,
@@ -14,16 +16,24 @@ from app.api.deps import (
     PaginationDep,
     ScopeDep,
 )
+from app.core.exceptions import AuthenticationError
 from app.core.mqtt import get_bridge
 from app.domain.enums import GatewayStatus
 from app.models import Gateway
 from app.schemas.common import Page
+from app.schemas.enrollment import EnrollmentResponse, EnrollmentTokenIssued
 from app.schemas.equipment import EquipmentCreate, EquipmentRead
 from app.schemas.gateway import GatewayRead, GatewayUpdate
 from app.schemas.gateway_config import (
     GatewayConfigStatus,
     GatewayCredentialCreated,
     GatewayCredentialRead,
+)
+
+# El bearer del enrolamiento, aparte del que usan las personas: son dos
+# credenciales distintas y no deben poder usarse una en lugar de la otra.
+_enrollment_bearer = HTTPBearer(
+    auto_error=False, description="Token de enrolamiento, de un solo uso"
 )
 
 router = APIRouter(prefix="/gateways", tags=["gateways"])
@@ -155,6 +165,69 @@ async def issue_gateway_credential(
     gateway, credential = await service.issue(scope, gateway_id)
     return GatewayCredentialCreated(
         **_as_credential(gateway).model_dump(), credential=credential
+    )
+
+
+@router.post(
+    "/enroll",
+    response_model=EnrollmentResponse,
+    # Sin `ScopeDep` a propósito: quien llama no es un usuario ni una cuenta
+    # de servicio, es un equipo en una sede con un token de un solo uso. Si
+    # colgara de la cadena de autenticación normal, ese token pasaría a valer
+    # en otras rutas — que es exactamente lo que no debe pasar.
+    #
+    # Va antes que `/{gateway_id}/…` porque FastAPI resuelve por orden de
+    # declaración: al revés, "enroll" se leería como un gateway_id y fallaría
+    # con un 422 de UUID inválido.
+)
+async def enroll_gateway(
+    request: Request,
+    service: EnrollmentServiceDep,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(_enrollment_bearer)
+    ] = None,
+) -> EnrollmentResponse:
+    """Canjear un token de enrolamiento por la configuración del equipo.
+
+    Devuelve el `.env` completo, incluidas las variables que el equipo llena
+    solo — con el valor vacío y su `origen`, que es la instrucción para el
+    instalador.
+
+    Gastar el token y rotar la credencial ocurren juntos. Si la respuesta no
+    llega, hay que emitir otro token: permitir reintentar el canje sería tener
+    un token reutilizable.
+    """
+    if credentials is None or not credentials.credentials:
+        raise AuthenticationError("Falta el token de enrolamiento")
+
+    desde = request.client.host if request.client else "desconocido"
+    gateway, env, release = await service.exchange(credentials.credentials, desde)
+    return EnrollmentResponse(gateway_uuid=str(gateway.uuid), env=env, release=release)
+
+
+@router.post(
+    "/{gateway_id}/enrollment-token",
+    response_model=EnrollmentTokenIssued,
+    status_code=status.HTTP_201_CREATED,
+)
+async def issue_enrollment_token(
+    gateway_id: uuid.UUID, scope: ScopeDep, service: EnrollmentServiceDep
+) -> EnrollmentTokenIssued:
+    """Emitir el permiso con el que este gateway se configura solo.
+
+    Devuelve el comando entero, listo para pasarle al técnico. Se ve una sola
+    vez: de acá en más solo queda su hash.
+
+    Emitir uno nuevo vence los anteriores de este gateway — si no, cada
+    intento fallido dejaría un token vivo dando vueltas.
+
+    Distinto de `/credential`: aquel entrega el secreto para configurar el
+    equipo a mano; este hace que el equipo se configure solo, y **rota la
+    credencial durante el canje**. Usar los dos seguidos invalida el primero.
+    """
+    token, expira_en, comando = await service.issue(scope, gateway_id)
+    return EnrollmentTokenIssued(
+        token=token, expira_en=expira_en, comando=comando
     )
 
 

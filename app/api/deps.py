@@ -14,10 +14,12 @@ from app.core.exceptions import (
     AuthorizationError,
     PasswordChangeRequiredError,
 )
+from app.core.secret_box import SecretBox
 from app.core.security import TokenAudience, TokenScope
 from app.domain.access import AccessScope
 from app.domain.enums import UserRole
 from app.models import User
+from app.repositories.enrollment_token import EnrollmentTokenRepository
 from app.repositories.hierarchy import (
     ClientRepository,
     EquipmentRepository,
@@ -26,12 +28,14 @@ from app.repositories.hierarchy import (
     SiteRepository,
     VariableRepository,
 )
+from app.repositories.platform_setting import PlatformSettingRepository
 from app.repositories.service_account import ServiceAccountRepository
 from app.repositories.tariff import TariffRepository
 from app.repositories.user import UserRepository
 from app.schemas.common import Pagination
 from app.services.auth import AuthService, ResolvedToken
 from app.services.auth_monitor import MonitorAccessService, MonitorAuthService
+from app.services.enrollment import EnrollmentService
 from app.services.fleet import FleetService
 from app.services.gateway_config import (
     GatewayConfigService,
@@ -45,6 +49,7 @@ from app.services.hierarchy import (
     SiteService,
     VariableService,
 )
+from app.services.platform_settings import PlatformSettingService
 from app.services.service_accounts import ServiceAccountService, ServiceTokenService
 from app.services.tariff import TariffService
 from app.services.user import UserService
@@ -336,6 +341,33 @@ def get_fleet_service(session: SessionDep) -> FleetService:
 
 
 FleetServiceDep = Annotated[FleetService, Depends(get_fleet_service)]
+
+
+def get_enrollment_service(
+    session: SessionDep, settings: SettingsDep
+) -> EnrollmentService:
+    return EnrollmentService(
+        EnrollmentTokenRepository(session),
+        GatewayRepository(session),
+        PlatformSettingService(PlatformSettingRepository(session), SecretBox(settings)),
+        GatewayCredentialService(GatewayRepository(session)),
+    )
+
+
+EnrollmentServiceDep = Annotated[EnrollmentService, Depends(get_enrollment_service)]
+
+
+def get_platform_setting_service(
+    session: SessionDep, settings: SettingsDep
+) -> PlatformSettingService:
+    return PlatformSettingService(
+        PlatformSettingRepository(session), SecretBox(settings)
+    )
+
+
+PlatformSettingServiceDep = Annotated[
+    PlatformSettingService, Depends(get_platform_setting_service)
+]
 
 
 def get_service_account_service(session: SessionDep) -> ServiceAccountService:

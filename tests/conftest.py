@@ -26,6 +26,9 @@ from app.models import Client, User
 
 TEST_DB_URL = "postgresql://test_user:test_pass@localhost:5432/test_db"
 TEST_JWT_SECRET = "unit-test-secret-key-not-used-anywhere-real-0000"
+# Clave de cifrado de la configuración de plataforma. Generada para los
+# tests y sin uso en ningún lado real.
+TEST_SETTINGS_KEY = "iyfEs5t-40puTXN5i2FJ0BoCoBUylchZlywPps09ikM="
 
 
 @pytest.fixture
@@ -34,6 +37,7 @@ def settings() -> Settings:
     return Settings(
         supabase_db_url=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
         jwt_secret_key=TEST_JWT_SECRET,
+        settings_encryption_key=TEST_SETTINGS_KEY,
         environment="local",
         _env_file=None,  # pyright: ignore[reportCallIssue]
     )
@@ -72,6 +76,7 @@ def rs256_settings(rsa_keypair: tuple[Path, Path]) -> Settings:
         jwt_algorithm="RS256",
         jwt_private_key_path=str(private_path),
         jwt_public_key_path=str(public_path),
+        settings_encryption_key=TEST_SETTINGS_KEY,
         environment="local",
         _env_file=None,  # pyright: ignore[reportCallIssue]
     )

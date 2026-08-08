@@ -54,3 +54,19 @@ def generate_service_identifier() -> str:
 def generate_service_secret() -> str:
     """Return the private half, shown once and stored only as a hash."""
     return SERVICE_SECRET_PREFIX + secrets.token_urlsafe(SERVICE_SECRET_BYTES)
+
+
+# El token de enrolamiento vive horas y se gasta al usarse, pero mientras vive
+# entrega la configuración entera de un equipo. Misma longitud que la
+# credencial: nadie lo teclea, así que no hay razón para acortarlo.
+ENROLLMENT_TOKEN_BYTES = 32
+
+
+def generate_enrollment_token() -> str:
+    """Return the one-off token that exchanges for a gateway's configuration.
+
+    Opaco a propósito: no lleva adentro a qué gateway pertenece. Un token
+    filtrado no dice ni de qué instalación es, y la relación vive en una fila
+    que se puede revocar.
+    """
+    return secrets.token_urlsafe(ENROLLMENT_TOKEN_BYTES)
