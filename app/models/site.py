@@ -1,10 +1,9 @@
 """Site: a physical location belonging to a client."""
 
 import uuid
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -21,14 +20,6 @@ class Site(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "sites"
     __table_args__ = (
         UniqueConstraint("client_id", "nombre", name="uq_sites_client_id_nombre"),
-        CheckConstraint(
-            "latitud IS NULL OR (latitud >= -90 AND latitud <= 90)",
-            name="latitud_range",
-        ),
-        CheckConstraint(
-            "longitud IS NULL OR (longitud >= -180 AND longitud <= 180)",
-            name="longitud_range",
-        ),
     )
 
     client_id: Mapped[uuid.UUID] = mapped_column(
@@ -40,8 +31,11 @@ class Site(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     timezone: Mapped[str] = mapped_column(
         String(64), nullable=False, default="America/Bogota"
     )
-    latitud: Mapped[Decimal | None] = mapped_column(Numeric(8, 6))
-    longitud: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    # Dirección y ciudad en vez de coordenadas: nadie tiene a mano la latitud
+    # de una planta al darla de alta, así que el campo quedaba vacío y no servía
+    # ni para ubicarla ni para dibujarla en un mapa. Con la dirección escrita al
+    # menos se puede llegar.
+    ciudad: Mapped[str | None] = mapped_column(String(120))
     responsable_nombre: Mapped[str | None] = mapped_column(String(150))
 
     client: Mapped["Client"] = relationship(back_populates="sites", lazy="raise")

@@ -202,31 +202,6 @@ class TestCheckConstraints:
         with pytest.raises(IntegrityError):
             await db_session.flush()
 
-    @pytest.mark.parametrize(
-        ("latitud", "longitud"), [(91, 0), (-91, 0), (0, 181), (0, -181)]
-    )
-    async def test_coordinates_outside_the_globe_are_rejected(
-        self, db_session: AsyncSession, latitud: int, longitud: int
-    ) -> None:
-        client, *_ = await _full_chain(db_session)
-        db_session.add(
-            make_site(client, nombre="A_phsB", latitud=latitud, longitud=longitud)
-        )
-
-        with pytest.raises(IntegrityError):
-            await db_session.flush()
-
-    async def test_valid_coordinates_are_accepted(
-        self, db_session: AsyncSession
-    ) -> None:
-        client, _, _, _ = await _full_chain(db_session)
-        db_session.add(
-            make_site(
-                client, nombre="A_phsB", latitud="4.710989", longitud="-74.072092"
-            )
-        )
-
-        await db_session.flush()  # must not raise
 
 
 class TestForeignKeys:

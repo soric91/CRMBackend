@@ -93,8 +93,7 @@ class SiteFleet(BaseModel):
     nombre: str
     direccion: str | None
     timezone: str
-    latitud: Decimal | None
-    longitud: Decimal | None
+    ciudad: str | None
     gateways: list[GatewayFleet] | None = None
 
 

@@ -109,16 +109,6 @@ class TestSiteUpdate:
 
         assert response.status_code == status.HTTP_200_OK
 
-    async def test_out_of_range_coordinates_are_rejected(
-        self, client: AsyncClient, admin_headers: dict[str, str], tree: dict[str, str]
-    ) -> None:
-        response = await client.patch(
-            f"/api/v1/sites/{tree['site']}",
-            json={"latitud": 95},
-            headers=admin_headers,
-        )
-
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 class TestGatewayUpdate:
