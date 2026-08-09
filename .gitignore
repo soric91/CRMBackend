@@ -35,6 +35,13 @@ coverage.xml
 .tokensave/
 graphify-out/
 
+# El simulador de flota: siembra datos falsos en Postgres y en InfluxDB para
+# probar el panel con muchos equipos. Es herramienta de escritorio, no parte
+# del servicio, y versionarla metería en el repositorio un generador de datos
+# que nadie debería poder correr por accidente contra producción.
+simulador/
+app/scripts/seed_demo.py
+
 # Permisos de Claude Code en esta máquina. Son de quien usa la terminal, no
 # del proyecto.
 .claude/settings.local.json
