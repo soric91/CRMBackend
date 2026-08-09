@@ -78,6 +78,10 @@ psql "$DESTINO" -c 'SELECT version();'
 
 ## 3 · Volcar el origen
 
+> Esto copia **la estructura y todas las filas**. Si lo que querés es una base
+> vacía —un entorno de pruebas, una instalación nueva— saltá al
+> [apéndice](#apéndice--una-base-vacía-sin-datos) y volvé al paso 6.
+
 ```bash
 pg_dump "$ORIGEN" \
   --no-owner --no-privileges --no-acl \
@@ -217,3 +221,101 @@ find /respaldos -name 'ems_*.dump' -mtime +14 -delete
 
 Un respaldo que nunca se restauró no es un respaldo. Probá el restore en una
 base vacía al menos una vez.
+
+---
+
+# Apéndice · Una base vacía, sin datos
+
+Para un entorno de pruebas o una instalación nueva. Hay dos formas y **no dan
+lo mismo**; la diferencia importa.
+
+## Opción A · Dejar que Alembic la construya (recomendada)
+
+Es la forma propia del proyecto: las migraciones son la definición del esquema,
+así que aplicarlas sobre una base vacía produce exactamente la estructura que el
+código espera.
+
+```bash
+psql "$DESTINO" -c 'SELECT 1;'          # que responda antes de seguir
+# En .env: DATABASE_URL apuntando al destino
+uv run alembic upgrade head
+```
+
+**No queda del todo vacía, y está bien que así sea.** Tres migraciones insertan
+filas que no son datos de nadie sino la configuración que comparte la flota:
+
+```bash
+uv run python -c "
+import asyncio
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from app.core.config import get_settings
+from app.core.database import build_connect_args
+async def main():
+    s = get_settings()
+    m = create_async_engine(s.database_url, connect_args=build_connect_args(s))
+    async with m.connect() as c:
+        n = await c.scalar(text('SELECT count(*) FROM platform_settings'))
+        print(f'platform_settings: {n} filas')
+    await m.dispose()
+asyncio.run(main())"
+```
+
+Tienen que ser 32. Los valores vienen vacíos —el broker, los tokens— y se
+cargan desde el panel de Configuración; lo que las migraciones traen son las
+claves y sus descripciones.
+
+Después hace falta el primer administrador, porque la API no tiene registro
+público:
+
+```bash
+uv run python -m app.scripts.create_admin
+```
+
+## Opción B · Copiar la estructura del origen
+
+Solo si necesitás una copia exacta de cómo está **hoy** la base de origen,
+incluidas las diferencias que haya acumulado por fuera de las migraciones.
+
+```bash
+pg_dump "$ORIGEN" --schema-only \
+  --no-owner --no-privileges --no-acl \
+  --file=ems_estructura.sql
+
+psql "$DESTINO" --file=ems_estructura.sql
+```
+
+### El detalle que rompe esta opción
+
+`--schema-only` copia la tabla `alembic_version` **vacía**. Alembic la lee para
+saber qué se aplicó, así que en el destino cree que no se aplicó nada y el
+siguiente `upgrade head` intenta crear tablas que ya existen:
+
+```
+DuplicateTableError: relation "clients" already exists
+```
+
+Hay que decirle en qué punto está, sin ejecutar nada:
+
+```bash
+uv run alembic stamp head
+```
+
+`stamp` solo escribe la fila de versión. Y después queda la otra diferencia:
+las migraciones que insertan filas **no corrieron**, así que
+`platform_settings` está vacía y el gateway no va a recibir configuración
+ninguna. Si no la vas a cargar a mano, la Opción A es el camino.
+
+---
+
+## Cuál elegir
+
+| | Opción A · Alembic | Opción B · `--schema-only` |
+|---|---|---|
+| Estructura | la que definen las migraciones | la que tiene el origen hoy |
+| `platform_settings` | 32 filas, listas para completar | vacía |
+| `alembic_version` | correcto solo | hay que hacer `stamp head` |
+| Diferencias no migradas | se pierden, que suele ser lo deseable | se copian, incluidas las accidentales |
+
+Para una base nueva, **A**. **B** sirve para reproducir un problema que solo
+aparece con la estructura exacta de producción.
