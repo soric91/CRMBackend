@@ -66,7 +66,7 @@ def other_keypair(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]
 def _rs_settings(keypair: tuple[Path, Path], **overrides: object) -> Settings:
     private_path, public_path = keypair
     return Settings(
-        supabase_db_url=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
+        database_dsn=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
         jwt_algorithm="RS256",
         jwt_private_key_path=str(private_path),
         jwt_public_key_path=str(public_path),
@@ -95,7 +95,7 @@ class TestConfiguringIt:
         """A deployment mistake must not become a 500 on every login."""
         with pytest.raises(PydanticValidationError, match="JWT_PRIVATE_KEY_PATH"):
             Settings(
-                supabase_db_url=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
+                database_dsn=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
                 jwt_algorithm="RS256",
                 _env_file=None,  # pyright: ignore[reportCallIssue]
             )
@@ -103,7 +103,7 @@ class TestConfiguringIt:
     def test_an_unreadable_key_is_named_in_the_error(self, tmp_path: Path) -> None:
         with pytest.raises(PydanticValidationError, match="cannot read"):
             Settings(
-                supabase_db_url=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
+                database_dsn=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
                 jwt_algorithm="RS256",
                 jwt_private_key_path=str(tmp_path / "no-existe.pem"),
                 jwt_public_key_path=str(tmp_path / "no-existe.pem"),
@@ -116,7 +116,7 @@ class TestConfiguringIt:
 
         with pytest.raises(PydanticValidationError, match="not a PEM"):
             Settings(
-                supabase_db_url=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
+                database_dsn=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
                 jwt_algorithm="RS256",
                 jwt_private_key_path=str(junk),
                 jwt_public_key_path=str(junk),
@@ -126,7 +126,7 @@ class TestConfiguringIt:
     def test_hs256_still_needs_its_secret(self) -> None:
         with pytest.raises(PydanticValidationError, match="JWT_SECRET_KEY"):
             Settings(
-                supabase_db_url=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
+                database_dsn=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
                 jwt_algorithm="HS256",
                 _env_file=None,  # pyright: ignore[reportCallIssue]
             )
@@ -135,7 +135,7 @@ class TestConfiguringIt:
         """`none` is the classic one, and it must never be configurable."""
         with pytest.raises(PydanticValidationError):
             Settings(
-                supabase_db_url=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
+                database_dsn=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
                 jwt_algorithm="none",
                 _env_file=None,  # pyright: ignore[reportCallIssue]
             )

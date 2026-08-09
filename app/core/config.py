@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Annotated, Literal, Self
 
 from pydantic import (
+    AliasChoices,
     Field,
     PostgresDsn,
     PrivateAttr,
@@ -60,13 +61,26 @@ class Settings(BaseSettings):
     # NoDecode: the value is a plain comma-separated string, not JSON.
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
-    # --- Database (Supabase / PostgreSQL) ---
-    # The DSN may carry no password: keeping the secret in its own variable
-    # avoids URL-escaping mistakes and makes rotation a one-line change.
-    supabase_db_url: PostgresDsn
-    supabase_db_password: SecretStr | None = None
-    # Supabase requires TLS. `verify-full` is the right value once the client
-    # trusts Supabase's CA; `require` encrypts without verifying the certificate.
+    # --- Database (PostgreSQL) ---
+    # A full DSN, password included. It is not tied to any provider: the same
+    # value works for a managed service or a Postgres next to the API.
+    #
+    # El alias existe porque `database_url` ya es la propiedad que devuelve la
+    # URL lista para el motor async. En el `.env` se escribe `DATABASE_URL`, que
+    # es el nombre que espera cualquiera que haya desplegado algo con Postgres;
+    # el nombre del campo sigue aceptándose para construir Settings a mano.
+    #
+    # `repr=False` no es cosmético: el DSN lleva la contraseña en claro, y sin
+    # esto aparecería entera en cualquier `repr(settings)` — un traceback de
+    # arranque, un log de depuración, un `print` puesto para mirar la config.
+    # Antes eso lo evitaba un `SecretStr` aparte; ahora lo evita esto. Para
+    # mostrar la conexión existe `safe_database_url`, que enmascara.
+    database_dsn: PostgresDsn = Field(
+        validation_alias=AliasChoices("DATABASE_URL", "database_dsn"),
+        repr=False,
+    )
+    # `verify-full` is the right value once the client trusts the server's CA;
+    # `require` encrypts without verifying the certificate.
     db_ssl_mode: Literal[
         "disable", "allow", "prefer", "require", "verify-ca", "verify-full"
     ] = "require"
@@ -135,20 +149,21 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
-    @field_validator("supabase_db_url", mode="before")
+    @field_validator("database_dsn", mode="before")
     @classmethod
     def _reject_http_project_url(cls, value: object) -> object:
-        """Reject the Supabase Project URL, a common copy-paste mistake.
+        """Reject an HTTP URL, which is the usual copy-paste mistake.
 
-        ``https://<ref>.supabase.co`` is the PostgREST endpoint, not a
+        Managed providers show an HTTP endpoint next to the connection string
+        —Supabase's Project URL is the clearest example— and it is not a
         PostgreSQL DSN. ``PostgresDsn`` already rejects it, but the default
-        message does not explain where the right value lives.
+        message does not say what the right value looks like.
         """
         if isinstance(value, str) and value.startswith(("http://", "https://")):
             raise ValueError(
-                "SUPABASE_DB_URL must be a PostgreSQL DSN (postgresql://...), "
-                "not the Supabase Project URL. Copy it from "
-                "Dashboard > Connect > Connection String > Session pooler."
+                "DATABASE_URL must be a PostgreSQL DSN "
+                "(postgresql://user:password@host:5432/database), not an HTTP "
+                "endpoint."
             )
         return value
 
@@ -210,27 +225,29 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_a_password(self) -> Self:
-        """Fail fast when neither the DSN nor its own variable carries one."""
+        """Fail fast when the DSN carries no password.
+
+        Connecting without one solo funciona con `trust` en el servidor, que
+        nadie debería tener abierto. Fallar al arrancar es mejor que descubrirlo
+        en la primera consulta.
+        """
         if self.database_url.password:
             return self
         raise ValueError(
-            "No database password: set SUPABASE_DB_PASSWORD, or embed the "
-            "password in SUPABASE_DB_URL."
+            "DATABASE_URL must include the password: "
+            "postgresql://user:password@host:5432/database"
         )
 
     @property
     def database_url(self) -> URL:
         """Return the connection URL forced to the ``asyncpg`` driver.
 
-        Supabase hands out ``postgresql://`` (or ``postgres://``) URLs; the
-        async engine needs an explicit async driver. When
-        ``SUPABASE_DB_PASSWORD`` is set it wins over any password inlined in
-        the DSN, and SQLAlchemy escapes it for us.
+        Providers hand out ``postgresql://`` (or ``postgres://``) URLs; the
+        async engine needs an explicit async driver, so the scheme is rewritten
+        here instead of asking anyone to type a driver name they should not
+        have to know about.
         """
-        url = make_url(str(self.supabase_db_url)).set(drivername="postgresql+asyncpg")
-        if self.supabase_db_password is not None:
-            url = url.set(password=self.supabase_db_password.get_secret_value())
-        return url
+        return make_url(str(self.database_dsn)).set(drivername="postgresql+asyncpg")
 
     @property
     def async_database_url(self) -> str:

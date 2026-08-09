@@ -35,7 +35,7 @@ TEST_SETTINGS_KEY = "iyfEs5t-40puTXN5i2FJ0BoCoBUylchZlywPps09ikM="
 def settings() -> Settings:
     """Settings built from explicit test values, ignoring any local ``.env``."""
     return Settings(
-        supabase_db_url=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
+        database_dsn=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
         jwt_secret_key=TEST_JWT_SECRET,
         settings_encryption_key=TEST_SETTINGS_KEY,
         environment="local",
@@ -72,7 +72,7 @@ def rs256_settings(rsa_keypair: tuple[Path, Path]) -> Settings:
     """Settings signing with a key pair rather than a shared secret."""
     private_path, public_path = rsa_keypair
     return Settings(
-        supabase_db_url=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
+        database_dsn=TEST_DB_URL,  # pyright: ignore[reportArgumentType]
         jwt_algorithm="RS256",
         jwt_private_key_path=str(private_path),
         jwt_public_key_path=str(public_path),
