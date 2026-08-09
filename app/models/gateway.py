@@ -24,7 +24,6 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.types import enum_column
 
 if TYPE_CHECKING:
-    from app.models.alert_config import AlertConfig
     from app.models.equipment import Equipment
     from app.models.site import Site
 
@@ -102,9 +101,6 @@ class Gateway(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         lazy="raise",
         order_by="Equipment.nombre_dispositivo",
-    )
-    alerts_config: Mapped[list["AlertConfig"]] = relationship(
-        back_populates="gateway", cascade="all, delete-orphan", lazy="raise"
     )
 
     @property

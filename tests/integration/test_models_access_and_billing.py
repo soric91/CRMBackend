@@ -1,6 +1,5 @@
 """Users, tariffs and alert rules."""
 
-import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -10,16 +9,11 @@ from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.enums import (
-    AlertType,
-    NotificationChannel,
     UserRole,
 )
-from app.models import AlertConfig, Client, Tariff, User
+from app.models import Client, Tariff, User
 from tests.factories import (
-    make_alert_config,
     make_client,
-    make_gateway,
-    make_site,
     make_tariff,
     make_user,
 )
@@ -208,77 +202,6 @@ class TestTariffs:
         """A single platform-wide price: no tenant column, no foreign key."""
         assert "client_id" not in Tariff.__table__.columns
         assert not list(Tariff.__table__.foreign_keys)
-
-
-class TestAlertConfig:
-    async def test_a_global_rule_needs_no_gateway(
-        self, db_session: AsyncSession
-    ) -> None:
-        db_session.add(make_alert_config(gateway_id=None))
-        await db_session.flush()
-
-        stored = (await db_session.execute(select(AlertConfig))).scalar_one()
-        assert stored.gateway_id is None
-        assert stored.canal_notif is NotificationChannel.EMAIL
-        assert stored.activo is True
-
-    async def test_a_rule_can_be_scoped_to_one_gateway(
-        self, db_session: AsyncSession
-    ) -> None:
-        client = await _client(db_session)
-        site = make_site(client)
-        db_session.add(site)
-        await db_session.flush()
-        gateway = make_gateway(site)
-        db_session.add(gateway)
-        await db_session.flush()
-        db_session.add(
-            make_alert_config(
-                gateway_id=gateway.id,
-                tipo=AlertType.VOLTAJE_FUERA_RANGO,
-                umbral=Decimal("253.0"),
-                canal_notif=NotificationChannel.TELEGRAM,
-            )
-        )
-
-        await db_session.flush()  # must not raise
-
-    async def test_a_rule_cannot_point_at_a_missing_gateway(
-        self, db_session: AsyncSession
-    ) -> None:
-        db_session.add(make_alert_config(gateway_id=uuid.uuid4()))
-
-        with pytest.raises(IntegrityError):
-            await db_session.flush()
-
-    async def test_an_unknown_channel_is_rejected(
-        self, db_session: AsyncSession
-    ) -> None:
-        db_session.add(make_alert_config(canal_notif="paloma_mensajera"))
-
-        with pytest.raises((IntegrityError, StatementError, LookupError)):
-            await db_session.flush()
-
-    async def test_deleting_a_gateway_removes_its_rules(
-        self, db_session: AsyncSession
-    ) -> None:
-        client = await _client(db_session)
-        site = make_site(client)
-        db_session.add(site)
-        await db_session.flush()
-        gateway = make_gateway(site)
-        db_session.add(gateway)
-        await db_session.flush()
-        db_session.add(make_alert_config(gateway_id=gateway.id))
-        await db_session.commit()
-
-        await db_session.delete(gateway)
-        await db_session.commit()
-
-        count = (
-            await db_session.execute(select(func.count()).select_from(AlertConfig))
-        ).scalar_one()
-        assert count == 0
 
 
 class TestEnumStorage:

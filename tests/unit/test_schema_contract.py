@@ -11,7 +11,6 @@ from app.core.database import Base
 from app.models import __all__ as exported_models
 
 EXPECTED_TABLES = {
-    "alerts_config",
     "clients",
     "enrollment_tokens",
     "equipment",
@@ -70,7 +69,6 @@ class TestReferentialIntegrity:
             ("gateways", "sites"),
             ("equipment", "gateways"),
             ("variables", "equipment"),
-            ("alerts_config", "gateways"),
         ]
         for child, parent in chain:
             keys = [
@@ -105,9 +103,8 @@ class TestRepresentations:
         from datetime import date
         from decimal import Decimal
 
-        from app.domain.enums import AlertType, EquipmentType, UserRole
+        from app.domain.enums import EquipmentType, UserRole
         from app.models import (
-            AlertConfig,
             Client,
             Equipment,
             Gateway,
@@ -128,13 +125,7 @@ class TestRepresentations:
                 "junio 2026",
             ),
             (User(email="a@b.com", role=UserRole.ADMIN), "a@b.com"),
-            (AlertConfig(tipo=AlertType.DESCONEXION), "desconexion"),
         ]
         for instance, expected in cases:
             assert expected in repr(instance)
 
-    def test_a_global_alert_rule_says_so(self) -> None:
-        from app.domain.enums import AlertType
-        from app.models import AlertConfig
-
-        assert "global" in repr(AlertConfig(tipo=AlertType.DESCONEXION))

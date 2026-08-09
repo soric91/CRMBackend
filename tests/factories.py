@@ -10,7 +10,6 @@ from itertools import count
 from typing import Any
 
 from app.domain.enums import (
-    AlertType,
     EquipmentType,
     ModbusDataType,
     ModbusTransport,
@@ -18,7 +17,6 @@ from app.domain.enums import (
     UserRole,
 )
 from app.models import (
-    AlertConfig,
     Client,
     Equipment,
     Gateway,
@@ -125,5 +123,3 @@ def make_user(**overrides: Any) -> User:
     )
 
 
-def make_alert_config(**overrides: Any) -> AlertConfig:
-    return AlertConfig(**{"tipo": AlertType.DESCONEXION, **overrides})

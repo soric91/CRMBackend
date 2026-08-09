@@ -3,7 +3,6 @@
 Every model is imported here so Alembic autogenerate sees the full metadata.
 """
 
-from app.models.alert_config import AlertConfig
 from app.models.client import Client
 from app.models.enrollment_token import EnrollmentToken
 from app.models.equipment import Equipment
@@ -16,7 +15,6 @@ from app.models.user import User
 from app.models.variable import Variable
 
 __all__ = [
-    "AlertConfig",
     "Client",
     "EnrollmentToken",
     "Equipment",
