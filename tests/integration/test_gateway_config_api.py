@@ -333,6 +333,10 @@ class TestConfiguration:
         assert device["baudrate"] == 9600
         assert device["device_id"] == 11
         assert device["modbusconnect"] is True
+        # El firmware necesita saber con qué código de función leer el bloque.
+        # Sin esto tendría que adivinarlo, y adivinar mal no da error: devuelve
+        # una excepción Modbus que se ve como un medidor que no responde.
+        assert device["modbus_function"] == 3
 
     async def test_registers_come_out_as_hex_and_struct_characters(
         self,

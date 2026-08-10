@@ -84,6 +84,9 @@ class DeviceConfig(BaseModel):
     port: int | None = None
 
     device_id: int
+    # El código de función con el que se lee el bloque: 3 holding, 4 input,
+    # 1 coils, 2 discrete inputs.
+    modbus_function: int
     modbusconnect: bool
     modbusread: bool
     blockreading: bool

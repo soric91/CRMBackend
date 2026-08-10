@@ -321,6 +321,7 @@ class GatewayConfigService:
             host=None if is_serial else equipment.host,
             port=None if is_serial else equipment.puerto_tcp,
             device_id=equipment.modbus_id,
+            modbus_function=equipment.modbus_function,
             modbusconnect=equipment.modbusconnect,
             modbusread=equipment.modbusread,
             blockreading=equipment.blockreading,

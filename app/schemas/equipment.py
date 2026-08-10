@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -27,6 +27,8 @@ class EquipmentCreate(BaseModel):
 
     tipo: EquipmentType
     modbus_id: int = Field(ge=MIN_MODBUS_ID, le=MAX_MODBUS_ID)
+    # Solo códigos de lectura: el gateway lee medidores, no los opera.
+    modbus_function: Literal[1, 2, 3, 4] = 3
     transporte: ModbusTransport = ModbusTransport.RTU
     # Titles the device's section in the firmware config and names its map
     # file, so it has to be unique within the gateway.
@@ -91,6 +93,7 @@ class EquipmentUpdate(BaseModel):
 
     tipo: EquipmentType | None = None
     modbus_id: int | None = Field(default=None, ge=MIN_MODBUS_ID, le=MAX_MODBUS_ID)
+    modbus_function: Literal[1, 2, 3, 4] | None = None
     transporte: ModbusTransport | None = None
     nombre_dispositivo: str | None = Field(default=None, min_length=1, max_length=80)
     device_type: str | None = Field(default=None, min_length=1, max_length=60)
@@ -119,6 +122,7 @@ class EquipmentRead(BaseModel):
     modelo: str | None
     tipo: EquipmentType
     modbus_id: int
+    modbus_function: int
     transporte: ModbusTransport
     nombre_dispositivo: str
     device_type: str

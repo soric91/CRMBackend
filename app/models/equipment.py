@@ -64,6 +64,11 @@ class Equipment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         _TCP_IS_UNIQUE_BY_HOST,
         _NAME_IS_UNIQUE_PER_GATEWAY,
         CheckConstraint("modbus_id BETWEEN 1 AND 247", name="modbus_id_range"),
+        # Solo los cuatro códigos de lectura. Escribir (5, 6, 15, 16) no tiene
+        # sentido acá: el gateway lee medidores, no los opera.
+        CheckConstraint(
+            "modbus_function IN (1, 2, 3, 4)", name="modbus_function_is_a_read"
+        ),
         # The serial parameters are absent on a TCP device, so every check has
         # to tolerate NULL or it would reject the whole transport.
         CheckConstraint("baudrate IS NULL OR baudrate > 0", name="baudrate_positive"),
@@ -127,6 +132,15 @@ class Equipment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     puerto_tcp: Mapped[int | None] = mapped_column(Integer)
 
     # --- firmware switches, copied verbatim into its config file ---
+    # El código de función Modbus con el que el firmware lee este equipo. Va
+    # por equipo y no por variable: el firmware arma **una** petición de bloque
+    # para todo el dispositivo, así que el código es del dispositivo.
+    #
+    # 3 —holding registers— es lo que usa casi todo medidor comercial, y por eso
+    # es el valor por defecto: dejarlo nulo obligaría al firmware a adivinar.
+    modbus_function: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, server_default="3"
+    )
     modbusconnect: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()
     )
