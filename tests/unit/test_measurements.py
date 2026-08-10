@@ -45,10 +45,16 @@ class TestUnitsCannotDrift:
             ("PhV_phsA", "V"),
             ("PPV_phsAB", "V"),
             ("A_phsA", "A"),
-            ("TotW", "kW"),
-            ("TotVAr", "kvar"),
-            ("TotVA", "kVA"),
+            # Unidad base y no kilo: el medidor entrega vatios, y declararlos
+            # en kW hacía que el panel multiplicara por mil — una acometida de
+            # 600 W se mostraba como 600 kW. El escalado lo hace el panel al
+            # mostrar, cuando el valor pasa de 1000.
+            ("TotW", "W"),
+            ("TotVAr", "var"),
+            ("TotVA", "VA"),
             ("Hz", "Hz"),
+            # La energía sí llega en kilos: el contador del medidor acumula
+            # kWh directamente, y son cientos, no cientos de miles.
             ("TotWh_import", "kWh"),
         ],
     )

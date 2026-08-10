@@ -129,24 +129,33 @@ CATALOGO: tuple[Medicion, ...] = (
     *_por_fase("A", "Corriente", Magnitud.CORRIENTE, "A"),
     Medicion("A_neut", "Corriente de neutro", Magnitud.CORRIENTE, Fase.NEUTRO, "A"),
     # --- Potencia ---
-    *_por_fase("W", "Potencia activa", Magnitud.POTENCIA_ACTIVA, "kW"),
+    # Vatios y no kilovatios: el medidor entrega la potencia en la unidad base,
+    # y declararla en kW hacía que el panel multiplicara por mil. Una acometida
+    # de 600 W se mostraba como 600 kW — el valor de una industria mediana, en
+    # una casa, sin que nada avisara.
+    #
+    # El panel escala solo al mostrar: por debajo de 1000 dice vatios y por
+    # encima pasa a kW. Poner la unidad base es lo que le permite hacerlo bien.
+    *_por_fase("W", "Potencia activa", Magnitud.POTENCIA_ACTIVA, "W"),
     Medicion(
-        "TotW", "Potencia activa total", Magnitud.POTENCIA_ACTIVA, Fase.TOTAL, "kW"
+        "TotW", "Potencia activa total", Magnitud.POTENCIA_ACTIVA, Fase.TOTAL, "W"
     ),
-    *_por_fase("VAr", "Potencia reactiva", Magnitud.POTENCIA_REACTIVA, "kvar"),
+    # Reactiva y aparente salen del mismo bloque de registros y con la misma
+    # escala que la activa, así que van también en unidad base.
+    *_por_fase("VAr", "Potencia reactiva", Magnitud.POTENCIA_REACTIVA, "var"),
     Medicion(
         "TotVAr",
         "Potencia reactiva total",
         Magnitud.POTENCIA_REACTIVA,
         Fase.TOTAL,
-        "kvar",
+        "var",
     ),
     Medicion(
         "TotVA",
         "Potencia aparente total",
         Magnitud.POTENCIA_APARENTE,
         Fase.TOTAL,
-        "kVA",
+        "VA",
     ),
     # --- Factor de potencia: adimensional, por eso la unidad va vacía ---
     *_por_fase("PF", "Factor de potencia", Magnitud.FACTOR_POTENCIA, ""),
