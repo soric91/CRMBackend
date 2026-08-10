@@ -198,6 +198,53 @@ CATALOGO: tuple[Medicion, ...] = (
         Fase.TOTAL,
         "kvarh",
     ),
+    # --- Energía reactiva por cuadrante ---
+    #
+    # Un medidor de cuatro cuadrantes lleva un contador por cada combinación de
+    # signo entre potencia activa y reactiva:
+    #
+    #   Q1  +P +Q   consume activa, consume reactiva (carga inductiva)
+    #   Q2  -P +Q   entrega activa, consume reactiva
+    #   Q3  -P -Q   entrega activa, entrega reactiva
+    #   Q4  +P -Q   consume activa, entrega reactiva (carga capacitiva)
+    #
+    # Se clasifican con las dos magnitudes reactivas que ya existen y no con
+    # una nueva: por el lado de la reactiva —que es lo que estos contadores
+    # miden— Q1 y Q2 son consumo, Q3 y Q4 son entrega. Inventar una magnitud
+    # "por cuadrante" obligaría a tocar el enum en los tres proyectos para
+    # expresar algo que estas dos ya dicen.
+    #
+    # El cuadrante queda en la etiqueta, que es donde importa: sirve para
+    # facturar penalizaciones por factor de potencia, y ahí se mira uno
+    # concreto, no la suma.
+    Medicion(
+        "Q1Eq",
+        "Energía reactiva Q1 (inductiva, consumiendo)",
+        Magnitud.ENERGIA_REACTIVA_IMPORTADA,
+        Fase.TOTAL,
+        "kvarh",
+    ),
+    Medicion(
+        "Q2Eq",
+        "Energía reactiva Q2 (inductiva, entregando activa)",
+        Magnitud.ENERGIA_REACTIVA_IMPORTADA,
+        Fase.TOTAL,
+        "kvarh",
+    ),
+    Medicion(
+        "Q3Eq",
+        "Energía reactiva Q3 (capacitiva, entregando activa)",
+        Magnitud.ENERGIA_REACTIVA_EXPORTADA,
+        Fase.TOTAL,
+        "kvarh",
+    ),
+    Medicion(
+        "Q4Eq",
+        "Energía reactiva Q4 (capacitiva, consumiendo activa)",
+        Magnitud.ENERGIA_REACTIVA_EXPORTADA,
+        Fase.TOTAL,
+        "kvarh",
+    ),
 )
 
 POR_NOMBRE: dict[str, Medicion] = {medicion.nombre: medicion for medicion in CATALOGO}

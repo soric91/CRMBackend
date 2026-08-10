@@ -131,3 +131,51 @@ class TestDigitalIO:
         assert medicion is not None
         assert medicion.magnitud is Magnitud.ESTADO_DIGITAL
         assert medicion.acumulativa is False
+
+
+class TestFourQuadrantEnergy:
+    """Los contadores de un medidor de cuatro cuadrantes.
+
+    Un medidor así lleva la reactiva separada por combinación de signo entre
+    potencia activa y reactiva. Sirve para facturar penalizaciones por factor
+    de potencia, donde se mira un cuadrante concreto y no la suma.
+    """
+
+    def test_the_four_counters_are_in_the_catalogue(self) -> None:
+        nombres = {m.nombre for m in CATALOGO}
+
+        assert {"Q1Eq", "Q2Eq", "Q3Eq", "Q4Eq"} <= nombres
+
+    def test_all_four_are_counters(self) -> None:
+        """Son acumulados. Sin esta marca el panel promediaría un contador
+        monótono y mostraría un consumo que no existe."""
+        for nombre in ("Q1Eq", "Q2Eq", "Q3Eq", "Q4Eq"):
+            medicion = next(m for m in CATALOGO if m.nombre == nombre)
+            assert es_acumulativa(medicion.magnitud), nombre
+
+    def test_they_are_split_by_which_way_the_reactive_flows(self) -> None:
+        """Q1 y Q2 consumen reactiva; Q3 y Q4 la entregan.
+
+        Es lo que decide de qué lado del balance cae cada contador, y
+        confundirlo invertiría el signo de la penalización.
+        """
+        por_nombre = {m.nombre: m for m in CATALOGO}
+
+        assert por_nombre["Q1Eq"].magnitud is Magnitud.ENERGIA_REACTIVA_IMPORTADA
+        assert por_nombre["Q2Eq"].magnitud is Magnitud.ENERGIA_REACTIVA_IMPORTADA
+        assert por_nombre["Q3Eq"].magnitud is Magnitud.ENERGIA_REACTIVA_EXPORTADA
+        assert por_nombre["Q4Eq"].magnitud is Magnitud.ENERGIA_REACTIVA_EXPORTADA
+
+    def test_the_quadrant_is_readable_in_the_label(self) -> None:
+        """El nombre canónico no dice nada a quien lo lee: `Q3Eq` es un
+        registro, no una explicación."""
+        por_nombre = {m.nombre: m for m in CATALOGO}
+
+        assert "Q1" in por_nombre["Q1Eq"].etiqueta
+        assert "inductiva" in por_nombre["Q1Eq"].etiqueta
+        assert "capacitiva" in por_nombre["Q4Eq"].etiqueta
+
+    def test_they_are_measured_in_kvarh(self) -> None:
+        for nombre in ("Q1Eq", "Q2Eq", "Q3Eq", "Q4Eq"):
+            medicion = next(m for m in CATALOGO if m.nombre == nombre)
+            assert medicion.unidad == "kvarh", nombre
