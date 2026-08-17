@@ -94,6 +94,11 @@ class SiteFleet(BaseModel):
     direccion: str | None
     timezone: str
     ciudad: str | None
+    # Travels to ApiEMS: with generation the frontier meter only shows the net
+    # balance, and several indicators are only valid outside daylight hours.
+    # `None` means nobody stated it, so the analytics side detects it from the
+    # exported energy.
+    tiene_generacion: bool | None = None
     gateways: list[GatewayFleet] | None = None
 
 

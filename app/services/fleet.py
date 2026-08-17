@@ -243,6 +243,7 @@ def _as_site(site: Site, level: FleetLevel) -> SiteFleet:
         direccion=site.direccion,
         timezone=site.timezone,
         ciudad=site.ciudad,
+        tiene_generacion=site.tiene_generacion,
         gateways=(
             [_as_gateway(item, level) for item in site.gateways]
             if reaches(level, FleetLevel.GATEWAYS)
