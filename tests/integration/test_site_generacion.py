@@ -113,7 +113,7 @@ class TestSedeConGeneracion:
         client_id = await _create_client(client, admin_headers)
         await client.post(
             f"/api/v1/clients/{client_id}/sites",
-            json={"nombre": "Planta", "tiene_generacion": True},
+            json={"nombre": "Planta", "tiene_generacion": True, "capacidad_kwp": "7.20"},
             headers=admin_headers,
         )
 
@@ -126,3 +126,5 @@ class TestSedeConGeneracion:
         assert response.status_code == status.HTTP_200_OK, response.text
         sede = response.json()["items"][0]["sites"][0]
         assert sede["tiene_generacion"] is True
+        # La capacidad viaja con el modo: el panel muestra las dos juntas.
+        assert float(sede["capacidad_kwp"]) == 7.2

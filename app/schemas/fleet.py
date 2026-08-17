@@ -99,6 +99,10 @@ class SiteFleet(BaseModel):
     # `None` means nobody stated it, so the analytics side detects it from the
     # exported energy.
     tiene_generacion: bool | None = None
+    # Potencia instalada del arreglo. Viaja junto al modo porque el panel la
+    # muestra al lado: "generación propia · 5,5 kWp" dice mucho más que el
+    # booleano solo.
+    capacidad_kwp: Decimal | None = None
     gateways: list[GatewayFleet] | None = None
 
 
