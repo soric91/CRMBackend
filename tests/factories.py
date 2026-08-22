@@ -11,6 +11,7 @@ from typing import Any
 
 from app.domain.enums import (
     EquipmentType,
+    FirmwareChannel,
     ModbusDataType,
     ModbusTransport,
     SerialParity,
@@ -19,6 +20,7 @@ from app.domain.enums import (
 from app.models import (
     Client,
     Equipment,
+    FirmwareRelease,
     Gateway,
     Site,
     Tariff,
@@ -49,6 +51,18 @@ def make_site(client: Client, **overrides: Any) -> Site:
 def make_gateway(site: Site, **overrides: Any) -> Gateway:
     return Gateway(
         **{"site_id": site.id, "numero_serie": "GW-0001", **overrides},
+    )
+
+
+def make_firmware_release(**overrides: Any) -> FirmwareRelease:
+    """A published version, with a checksum that has the right shape."""
+    return FirmwareRelease(
+        **{
+            "version": "v1.3.0",
+            "canal": FirmwareChannel.ESTABLE,
+            "sha256": "a" * 64,
+            **overrides,
+        }
     )
 
 

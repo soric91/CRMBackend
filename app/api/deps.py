@@ -20,6 +20,7 @@ from app.domain.access import AccessScope
 from app.domain.enums import UserRole
 from app.models import User
 from app.repositories.enrollment_token import EnrollmentTokenRepository
+from app.repositories.firmware_release import FirmwareReleaseRepository
 from app.repositories.hierarchy import (
     ClientRepository,
     EquipmentRepository,
@@ -36,6 +37,8 @@ from app.schemas.common import Pagination
 from app.services.auth import AuthService, ResolvedToken
 from app.services.auth_monitor import MonitorAccessService, MonitorAuthService
 from app.services.enrollment import EnrollmentService
+from app.services.firmware import FirmwareUpdateService
+from app.services.firmware_admin import FirmwareAdminService
 from app.services.fleet import FleetService
 from app.services.gateway_config import (
     GatewayConfigService,
@@ -333,6 +336,35 @@ def get_gateway_config_service(session: SessionDep) -> GatewayConfigService:
 
 GatewayConfigServiceDep = Annotated[
     GatewayConfigService, Depends(get_gateway_config_service)
+]
+
+
+def get_firmware_update_service(
+    session: SessionDep, settings: SettingsDep
+) -> FirmwareUpdateService:
+    return FirmwareUpdateService(
+        session,
+        PlatformSettingService(
+            PlatformSettingRepository(session), SecretBox(settings)
+        ),
+    )
+
+
+FirmwareUpdateServiceDep = Annotated[
+    FirmwareUpdateService, Depends(get_firmware_update_service)
+]
+
+
+def get_firmware_admin_service(
+    session: SessionDep, updates: FirmwareUpdateServiceDep
+) -> FirmwareAdminService:
+    return FirmwareAdminService(
+        session, FirmwareReleaseRepository(session), updates
+    )
+
+
+FirmwareAdminServiceDep = Annotated[
+    FirmwareAdminService, Depends(get_firmware_admin_service)
 ]
 
 

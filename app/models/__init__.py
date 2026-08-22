@@ -6,6 +6,7 @@ Every model is imported here so Alembic autogenerate sees the full metadata.
 from app.models.client import Client
 from app.models.enrollment_token import EnrollmentToken
 from app.models.equipment import Equipment
+from app.models.firmware_release import FirmwareRelease
 from app.models.gateway import Gateway
 from app.models.platform_setting import PlatformSetting
 from app.models.service_account import ServiceAccount
@@ -18,6 +19,7 @@ __all__ = [
     "Client",
     "EnrollmentToken",
     "Equipment",
+    "FirmwareRelease",
     "Gateway",
     "PlatformSetting",
     "ServiceAccount",

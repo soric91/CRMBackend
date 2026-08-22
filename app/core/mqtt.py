@@ -20,6 +20,7 @@ import json
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
+from datetime import datetime
 from typing import Any, Protocol
 
 import aiomqtt
@@ -72,6 +73,10 @@ class MqttBridge:
     def config_topic(self, gateway_uuid: uuid.UUID) -> str:
         """Where the CRM tells one gateway that it has work to do."""
         return f"{self._settings.mqtt_topic_prefix}/{gateway_uuid}/config"
+
+    def firmware_topic(self, gateway_uuid: uuid.UUID) -> str:
+        """Where the CRM tells one gateway that a new version is waiting."""
+        return f"{self._settings.mqtt_topic_prefix}/{gateway_uuid}/firmware"
 
     @property
     def status_pattern(self) -> str:
@@ -188,28 +193,66 @@ class MqttBridge:
         if not self.enabled or self._client is None:
             return False
 
-        payload = json.dumps(
+        return await self._publish(
+            self.config_topic(gateway_uuid),
+            gateway_uuid,
             {
                 "event": "config_changed",
                 "gateway_uuid": str(gateway_uuid),
                 "config_version": config_version,
-            }
+            },
         )
+
+    async def notify_firmware_update(
+        self, gateway_uuid: uuid.UUID, version: str, aplicar_desde: datetime
+    ) -> bool:
+        """Tell one gateway that a version is waiting, and from when.
+
+        The notice carries no package and no checksum: the device still asks
+        over HTTP with its own credential. Keeping the contract in one place
+        means the broker never becomes something that has to be trusted with
+        what a gateway is allowed to install.
+        """
+        return await self._publish(
+            self.firmware_topic(gateway_uuid),
+            gateway_uuid,
+            {
+                "event": "firmware_update",
+                "gateway_uuid": str(gateway_uuid),
+                "version": version,
+                "aplicar_desde": aplicar_desde.isoformat(),
+            },
+        )
+
+    async def _publish(
+        self, topic: str, gateway_uuid: uuid.UUID, payload: dict[str, Any]
+    ) -> bool:
+        """Publish one notice, swallowing whatever the broker does.
+
+        Retained and at-least-once: a device that was powered off gets it the
+        moment it reconnects. A failure is a lost optimisation — the gateway
+        polls anyway — so it is logged and never raised into a request.
+        """
+        if not self.enabled or self._client is None:
+            return False
         try:
             await self._client.publish(
-                self.config_topic(gateway_uuid),
-                payload=payload,
+                topic,
+                payload=json.dumps(payload),
                 qos=QOS_AT_LEAST_ONCE,
                 retain=True,
             )
         except Exception as exc:
             logger.warning(
                 "mqtt notice not delivered",
-                extra={"gateway_uuid": str(gateway_uuid), "error": str(exc)},
+                extra={"topic": topic, "error": str(exc)},
             )
             return False
 
-        logger.info("mqtt notice published", extra={"gateway_uuid": str(gateway_uuid)})
+        logger.info(
+            "mqtt notice published",
+            extra={"topic": topic, "gateway_uuid": str(gateway_uuid)},
+        )
         return True
 
 

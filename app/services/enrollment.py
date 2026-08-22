@@ -13,6 +13,7 @@ from app.core.logging import get_logger
 from app.core.security import hash_lookup_token
 from app.domain.access import AccessScope
 from app.domain.enums import SettingOrigin
+from app.domain.firmware_update import paquete_url
 from app.domain.passwords import generate_enrollment_token
 from app.models import EnrollmentToken, Gateway
 from app.repositories.enrollment_token import EnrollmentTokenRepository
@@ -170,7 +171,7 @@ class EnrollmentService:
             )
         return ReleaseRef(
             version=version,
-            url=f"{base}/gatewayEMS-{version}.tar.gz",
+            url=paquete_url(base, version),
             sha256=sha256,
         )
 

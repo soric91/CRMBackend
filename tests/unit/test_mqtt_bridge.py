@@ -7,6 +7,7 @@ that publishing never raises into a request.
 
 import json
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -135,6 +136,82 @@ class TestPublishing:
         bridge = MqttBridge(_settings(settings))
 
         assert await bridge.notify_config_changed(GATEWAY, "abc123") is False
+
+
+class TestTheFirmwareNotice:
+    async def test_it_goes_to_its_own_topic(self, settings: Settings) -> None:
+        """Separado del de configuración: un equipo puede querer escuchar uno
+        y no el otro, y mezclarlos obligaría a leer el cuerpo para saber cuál
+        llegó."""
+        bridge = MqttBridge(_settings(settings))
+        client = _RecordingClient()
+        bridge._client = client  # type: ignore[assignment]
+
+        await bridge.notify_firmware_update(
+            GATEWAY, "v1.4.0", datetime(2026, 8, 21, 8, 0, tzinfo=UTC)
+        )
+
+        assert client.published[0]["topic"] == f"crm/gateways/{GATEWAY}/firmware"
+
+    async def test_it_carries_no_package_and_no_checksum(
+        self, settings: Settings
+    ) -> None:
+        """El equipo igual pregunta por HTTP con su credencial: el broker
+        nunca decide qué software se instala."""
+        bridge = MqttBridge(_settings(settings))
+        client = _RecordingClient()
+        bridge._client = client  # type: ignore[assignment]
+
+        await bridge.notify_firmware_update(
+            GATEWAY, "v1.4.0", datetime(2026, 8, 21, 8, 0, tzinfo=UTC)
+        )
+
+        payload = json.loads(client.published[0]["payload"])
+        assert payload == {
+            "event": "firmware_update",
+            "gateway_uuid": str(GATEWAY),
+            "version": "v1.4.0",
+            "aplicar_desde": "2026-08-21T08:00:00+00:00",
+        }
+        assert "sha256" not in payload
+        assert "url" not in payload
+
+    async def test_it_is_retained_for_a_device_that_was_off(
+        self, settings: Settings
+    ) -> None:
+        bridge = MqttBridge(_settings(settings))
+        client = _RecordingClient()
+        bridge._client = client  # type: ignore[assignment]
+
+        await bridge.notify_firmware_update(
+            GATEWAY, "v1.4.0", datetime(2026, 8, 21, 8, 0, tzinfo=UTC)
+        )
+
+        assert client.published[0]["retain"] is True
+        assert client.published[0]["qos"] == 1
+
+    async def test_a_broker_that_refuses_does_not_raise(
+        self, settings: Settings
+    ) -> None:
+        bridge = MqttBridge(_settings(settings))
+        bridge._client = _FailingClient()  # type: ignore[assignment]
+
+        result = await bridge.notify_firmware_update(
+            GATEWAY, "v1.4.0", datetime(2026, 8, 21, 8, 0, tzinfo=UTC)
+        )
+
+        assert result is False
+
+    async def test_nothing_is_published_while_disconnected(
+        self, settings: Settings
+    ) -> None:
+        bridge = MqttBridge(_settings(settings))
+
+        result = await bridge.notify_firmware_update(
+            GATEWAY, "v1.4.0", datetime(2026, 8, 21, 8, 0, tzinfo=UTC)
+        )
+
+        assert result is False
 
 
 class TestDisabled:

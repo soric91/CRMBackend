@@ -132,6 +132,12 @@ class GatewayHeartbeatAck(BaseModel):
     # that only heartbeats still learns it has work to do.
     config_habilitada: bool
     config_version_actual: str
+    # True cuando hay una actualización de firmware esperando. Va acá para que
+    # un equipo que solo hace heartbeat se entere sin una llamada más — y para
+    # que la sepa aunque el broker esté caído.
+    firmware_pendiente: bool = False
+    firmware_version_objetivo: str | None = None
+    firmware_aplicar_desde: datetime | None = None
 
 
 class GatewayConfigStatus(BaseModel):

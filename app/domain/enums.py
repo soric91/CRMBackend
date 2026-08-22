@@ -154,3 +154,41 @@ class SettingOrigin(StrEnum):
     # tabla `gateways`. Repetirlo acá sería un segundo lugar afirmando lo
     # mismo, y el día que discrepen no habría forma de saber cuál manda.
     IDENTIDAD = "identidad"
+
+
+class FirmwareChannel(StrEnum):
+    """Para quién es una versión publicada.
+
+    Existe para poder probar en pocos equipos antes de tocar la flota: se
+    publica en `beta`, se instala a mano en uno o dos gateways, y recién
+    cuando aguantó unos días se publica la misma versión en `estable`. Sin
+    esta distinción, publicar y desplegar serían el mismo acto.
+    """
+
+    ESTABLE = "estable"
+    BETA = "beta"
+
+
+class FirmwareUpdateState(StrEnum):
+    """En qué punto va la actualización de un gateway.
+
+    Lo reporta el equipo, no lo deduce el servidor: entre que se programa y
+    que arranca el software nuevo hay un reinicio, y el CRM no tiene forma de
+    observar ese tramo. Los estados existen para que la pantalla diga la
+    verdad —"descargando" y "aplicando" son minutos en los que el equipo está
+    vivo pero ocupado— y para que un fallo quede escrito en vez de verse como
+    un gateway que simplemente no volvió.
+    """
+
+    # No hay ninguna actualización pedida. Es el estado de reposo.
+    SIN_PENDIENTE = "sin_pendiente"
+    # Hay una versión elegida y una hora a partir de la cual aplicarla.
+    PROGRAMADA = "programada"
+    # El equipo está bajando el paquete.
+    DESCARGANDO = "descargando"
+    # El paquete está verificado y el equipo se está reiniciando con él.
+    APLICANDO = "aplicando"
+    # Arrancó con la versión nueva y lo confirmó.
+    APLICADA = "aplicada"
+    # No se pudo: el motivo queda en `firmware_error`.
+    FALLIDA = "fallida"

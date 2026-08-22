@@ -18,7 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.domain.enums import GatewayLogLevel, GatewayStatus
+from app.domain.enums import FirmwareUpdateState, GatewayLogLevel, GatewayStatus
 from app.domain.gateway_status import derive_status
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.types import enum_column
@@ -39,6 +39,12 @@ class Gateway(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("hora_inicio BETWEEN 0 AND 23", name="hora_inicio_range"),
         CheckConstraint("hora_fin BETWEEN 0 AND 23", name="hora_fin_range"),
         CheckConstraint("hora_fin >= hora_inicio", name="horas_ordered"),
+        # An update in flight without a target is a device downloading nothing.
+        CheckConstraint(
+            "firmware_estado = 'sin_pendiente' OR firmware_objetivo_id IS NOT NULL",
+            name="firmware_target_present",
+        ),
+        CheckConstraint("firmware_intentos >= 0", name="firmware_intentos_no_negative"),
     )
 
     site_id: Mapped[UUID] = mapped_column(
@@ -93,6 +99,45 @@ class Gateway(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     hora_fin: Mapped[int] = mapped_column(
         Integer, nullable=False, default=23, server_default=text("23")
+    )
+
+    # --- the firmware update this device has been asked to install ---
+    # The release it should end up running, or NULL when nothing is pending.
+    # RESTRICT rather than SET NULL: a release cannot be deleted while a
+    # device is on its way to it, and the row is what says which package that
+    # device is downloading right now.
+    firmware_objetivo_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("firmware_releases.id", ondelete="RESTRICT"), index=True
+    )
+    # How far along it is. Reported by the device, never inferred here: a
+    # restart happens in the middle, and the CRM cannot watch that stretch.
+    firmware_estado: Mapped[FirmwareUpdateState] = mapped_column(
+        enum_column(FirmwareUpdateState, "firmware_update_state"),
+        nullable=False,
+        default=FirmwareUpdateState.SIN_PENDIENTE,
+        server_default=text(f"'{FirmwareUpdateState.SIN_PENDIENTE.value}'"),
+    )
+    # The instant the device is allowed to start. Computed from the fleet-wide
+    # hour in the site's own timezone, so it is comparable without knowing
+    # where the site is.
+    firmware_aplicar_desde: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    # What it was running before. Without it, a rollback has to be typed from
+    # memory on the night the new version turned out to be wrong.
+    firmware_version_anterior: Mapped[str | None] = mapped_column(String(40))
+    # Why it failed, in the device's own words. Truncated rather than a text
+    # column: this is a line for the panel, not a log.
+    firmware_error: Mapped[str | None] = mapped_column(String(300))
+    # Attempts spent on the current target. Capped so a device that cannot
+    # apply an update does not reboot itself every night forever.
+    firmware_intentos: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    # When the device last said anything about the update. Distinguishes "no
+    # news yet" from "it went quiet halfway through".
+    firmware_reportado_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
     )
 
     site: Mapped["Site"] = relationship(back_populates="gateways", lazy="raise")

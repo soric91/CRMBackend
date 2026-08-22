@@ -9,6 +9,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.api.deps import (
     EnrollmentServiceDep,
     EquipmentServiceDep,
+    FirmwareAdminServiceDep,
+    FirmwareUpdateServiceDep,
     FleetServiceDep,
     GatewayConfigServiceDep,
     GatewayCredentialServiceDep,
@@ -23,6 +25,7 @@ from app.models import Gateway
 from app.schemas.common import Page
 from app.schemas.enrollment import EnrollmentResponse, EnrollmentTokenIssued
 from app.schemas.equipment import EquipmentCreate, EquipmentRead
+from app.schemas.firmware import FirmwareUpdateStatus
 from app.schemas.gateway import GatewayRead, GatewayUpdate
 from app.schemas.gateway_config import (
     GatewayConfigStatus,
@@ -275,3 +278,38 @@ async def get_gateway_config_status(
         ultima_conexion=gateway.ultima_conexion,
         desactualizada=drifted,
     )
+
+
+@router.get("/{gateway_id}/firmware", response_model=FirmwareUpdateStatus)
+async def get_gateway_firmware_status(
+    gateway_id: uuid.UUID,
+    scope: ScopeDep,
+    credentials: GatewayCredentialServiceDep,
+    firmware: FirmwareUpdateServiceDep,
+) -> FirmwareUpdateStatus:
+    """En qué anda la actualización de este equipo.
+
+    Lo reporta el equipo, así que puede quedarse quieto: un `descargando` de
+    hace dos horas es un equipo que se quedó en el camino, y eso se ve acá.
+    """
+    gateway = await credentials.get(scope, gateway_id)
+    release = await firmware.objetivo(gateway)
+    return firmware.status(gateway, release.version if release else None)
+
+
+@router.delete("/{gateway_id}/firmware", response_model=FirmwareUpdateStatus)
+async def cancel_gateway_firmware_update(
+    gateway_id: uuid.UUID,
+    scope: ScopeDep,
+    credentials: GatewayCredentialServiceDep,
+    admin: FirmwareAdminServiceDep,
+    firmware: FirmwareUpdateServiceDep,
+) -> FirmwareUpdateStatus:
+    """Sacarle la actualización que tenía pedida.
+
+    No se puede una vez que empezó a aplicarla: el paquete ya está en el disco
+    y el equipo se está reiniciando con él.
+    """
+    gateway = await credentials.get(scope, gateway_id)
+    actualizado = await admin.cancel(scope, gateway)
+    return firmware.status(actualizado, None)

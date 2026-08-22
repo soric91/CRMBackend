@@ -1,9 +1,13 @@
 """The firmware's own endpoints.
 
-Two routes, reached by the gateway itself and by nobody else: one exchanges its
-long-lived credential for a short-lived token, the other hands it its
-configuration. Tokens carry the `gateway` audience, so they are useless on the
-CRM and on the monitoring web.
+Reached by the gateway itself and by nobody else: it exchanges its long-lived
+credential for a short-lived token, reports in, fetches its configuration, and
+asks whether a firmware update is waiting for it. Tokens carry the `gateway`
+audience, so they are useless on the CRM and on the monitoring web.
+
+Every route answers the same way when the uuid in the path is not the one
+inside the token: **404**, never 403. Confirming that another gateway exists
+would let one credential enumerate the fleet.
 """
 
 import uuid
@@ -12,9 +16,22 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.api.deps import GatewayConfigServiceDep, GatewayTokenServiceDep
-from app.core.exceptions import AuthenticationError, NotFoundError
+from app.api.deps import (
+    FirmwareUpdateServiceDep,
+    GatewayConfigServiceDep,
+    GatewayTokenServiceDep,
+)
+from app.core.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    NotFoundError,
+)
 from app.models import Gateway
+from app.schemas.firmware import (
+    FirmwareUpdateAck,
+    FirmwareUpdateOrder,
+    FirmwareUpdateStatus,
+)
 from app.schemas.gateway_config import (
     GatewayConfigAck,
     GatewayConfigResponse,
@@ -67,6 +84,7 @@ async def gateway_heartbeat(
     payload: GatewayHeartbeat,
     gateway: CurrentGatewayDep,
     service: GatewayConfigServiceDep,
+    firmware: FirmwareUpdateServiceDep,
 ) -> GatewayHeartbeatAck:
     """Report that the device is alive.
 
@@ -82,11 +100,20 @@ async def gateway_heartbeat(
         gateway, payload.firmware_version, payload.ip_actual
     )
     current, _ = await service.status_for_crm(updated)
+    # El aviso de firmware nunca hace fallar el heartbeat: con las
+    # actualizaciones apagadas la respuesta es la de siempre, sin novedad.
+    try:
+        orden = await firmware.pendiente(updated)
+    except AuthorizationError:
+        orden = None
     return GatewayHeartbeatAck(
         gateway_uuid=updated.uuid,
         ultima_conexion=updated.ultima_conexion,  # pyright: ignore[reportArgumentType]
         config_habilitada=updated.config_habilitada,
         config_version_actual=current,
+        firmware_pendiente=orden is not None,
+        firmware_version_objetivo=orden.version if orden else None,
+        firmware_aplicar_desde=orden.aplicar_desde if orden else None,
     )
 
 
@@ -149,3 +176,53 @@ async def acknowledge_gateway_config(
         ultima_conexion=updated.ultima_conexion,
         desactualizada=drifted,
     )
+
+
+@router.get("/{gateway_uuid}/firmware", response_model=FirmwareUpdateOrder)
+async def get_firmware_update(
+    gateway_uuid: uuid.UUID,
+    gateway: CurrentGatewayDep,
+    firmware: FirmwareUpdateServiceDep,
+) -> FirmwareUpdateOrder | Response:
+    """Return the update this gateway has to install, if any.
+
+    Three answers, and the firmware treats none of them as a failure:
+
+    * **200** — an order, with the package, its checksum and the window it may
+      be applied in. The device checks its own clock against that window.
+    * **204** — nothing pending. The common case, on every poll.
+    * **403** — updates are switched off for the whole fleet. Same vocabulary
+      as the configuration download, so the firmware already knows it means
+      "you are up to date", not "something broke".
+    """
+    if gateway.uuid != gateway_uuid:
+        raise NotFoundError(f"Gateway {gateway_uuid} not found")
+
+    orden = await firmware.pendiente(gateway)
+    if orden is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return orden
+
+
+@router.post("/{gateway_uuid}/firmware/ack", response_model=FirmwareUpdateStatus)
+async def acknowledge_firmware_update(
+    gateway_uuid: uuid.UUID,
+    payload: FirmwareUpdateAck,
+    gateway: CurrentGatewayDep,
+    firmware: FirmwareUpdateServiceDep,
+) -> FirmwareUpdateStatus:
+    """Record what the device reports about the update it was given.
+
+    The acknowledgement names the version it is talking about: between the
+    download and the reboot there is a stretch the CRM cannot observe, and an
+    ack that arrived late for a target that has since changed must not be
+    written down as progress on the new one.
+    """
+    if gateway.uuid != gateway_uuid:
+        raise NotFoundError(f"Gateway {gateway_uuid} not found")
+
+    updated = await firmware.acuse(
+        gateway, payload.estado, payload.version, payload.error
+    )
+    release = await firmware.objetivo(updated)
+    return firmware.status(updated, release.version if release else None)

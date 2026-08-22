@@ -7,6 +7,7 @@ from app.api.v1 import (
     auth_monitor,
     clients,
     equipment,
+    firmware,
     fleet,
     gateway_config,
     gateways,
@@ -28,6 +29,7 @@ api_router.include_router(clients.router)
 api_router.include_router(sites.router)
 api_router.include_router(gateways.router)
 api_router.include_router(gateway_config.router)
+api_router.include_router(firmware.router)
 api_router.include_router(platform_settings.router)
 api_router.include_router(equipment.router)
 api_router.include_router(variables.router)

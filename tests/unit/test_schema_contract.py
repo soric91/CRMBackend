@@ -14,6 +14,7 @@ EXPECTED_TABLES = {
     "clients",
     "enrollment_tokens",
     "equipment",
+    "firmware_releases",
     "gateways",
     "platform_settings",
     "service_accounts",
@@ -107,6 +108,7 @@ class TestRepresentations:
         from app.models import (
             Client,
             Equipment,
+            FirmwareRelease,
             Gateway,
             Site,
             Tariff,
@@ -118,6 +120,7 @@ class TestRepresentations:
             (Client(nombre_empresa="Acme"), "Acme"),
             (Site(nombre="Planta Norte"), "Planta Norte"),
             (Gateway(numero_serie="GW-1"), "GW-1"),
+            (FirmwareRelease(version="v1.3.0"), "v1.3.0"),
             (Equipment(tipo=EquipmentType.MEDIDOR, modbus_id=3), "id=3"),
             (Variable(nombre="PhV_phsA", registro_modbus=100), "PhV_phsA"),
             (
